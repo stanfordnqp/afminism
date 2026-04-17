@@ -77,25 +77,23 @@ export default function ScanCard({
     return () => observer.disconnect();
   }, [record.scanUm, record.minimized]);
 
-  // ── copy helpers ──────────────────────────────────────────────────────────
-  async function doCopy(raw: boolean) {
-    setCopying(raw ? "raw" : "scaled");
+  // ── copy / download helpers ───────────────────────────────────────────────
+  async function doCopy(data: boolean) {
+    setCopying(data ? "raw" : "scaled");
     try {
-      let blob: Blob;
-      if (raw) {
-        blob = await canvasToBlob(dataCanvasRef.current!);
-      } else {
-        const size = Math.max(record.side, 800);
-        const out = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, size);
-        blob = await canvasToBlob(out);
-      }
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      const cvs = data ? dataCanvasRef.current! : renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, Math.max(record.side, 800));
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": await canvasToBlob(cvs) })]);
     } catch {
-      const canvas = raw ? dataCanvasRef.current! : renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, Math.max(record.side, 800));
-      download(canvas.toDataURL("image/png"), `${record.label}${raw ? "_raw" : ""}.png`);
+      const cvs = data ? dataCanvasRef.current! : renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, Math.max(record.side, 800));
+      download(cvs.toDataURL("image/png"), `${record.label}${data ? "_data" : "_figure"}.png`);
     } finally {
       setCopying(null);
     }
+  }
+
+  function doDownload(data: boolean) {
+    const cvs = data ? dataCanvasRef.current! : renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, Math.max(record.side, 800));
+    download(cvs.toDataURL("image/png"), `${record.label}${data ? "_data" : "_figure"}.png`);
   }
 
   const { rms, rmsClipped, ptp, scanUm } = record;
@@ -130,13 +128,6 @@ export default function ScanCard({
           title="Click to rename"
         />
         <div className="card-actions">
-          <button className="icon-btn" onClick={onRotate} title="Rotate 90° clockwise">↻</button>
-          <button className="icon-btn" onClick={() => doCopy(false)} title="Copy with scale bar" disabled={copying !== null}>
-            {copying === "scaled" ? "…" : <CopyIcon />}
-          </button>
-          <button className="icon-btn" onClick={() => doCopy(true)} title="Copy raw (no scale bar)" disabled={copying !== null} style={{ fontSize: 10, fontWeight: 600 }}>
-            {copying === "raw" ? "…" : "raw"}
-          </button>
           <button className="icon-btn" onClick={onExpand} title="Expand fullscreen">
             <ExpandIcon />
           </button>
@@ -151,9 +142,28 @@ export default function ScanCard({
         onDoubleClick={!record.minimized ? onExpand : undefined}
         title={!record.minimized ? "Double-click to expand" : undefined}
       >
-        <div className="card-canvas-wrap">
+        <div className="card-canvas-wrap" style={{ position: "relative" }}>
           <canvas ref={dataCanvasRef} className="data-canvas" />
           <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
+          {/* Rotate button — top-right of image */}
+          <button className="canvas-rotate-btn" onClick={(e) => { e.stopPropagation(); onRotate(); }} title="Rotate 90°">↻</button>
+          {/* Copy / download overlay — bottom of image on hover */}
+          {!record.minimized && (
+            <div className="card-img-actions">
+              <button className="card-img-btn" onClick={(e) => { e.stopPropagation(); doCopy(true); }} disabled={copying !== null} title="Copy data">
+                {copying === "raw" ? "…" : <CopyIcon />}<span>data</span>
+              </button>
+              <button className="card-img-btn" onClick={(e) => { e.stopPropagation(); doCopy(false); }} disabled={copying !== null} title="Copy figure">
+                {copying === "scaled" ? "…" : <CopyIcon />}<span>figure</span>
+              </button>
+              <button className="card-img-btn" onClick={(e) => { e.stopPropagation(); doDownload(true); }} disabled={copying !== null} title="Download data">
+                <DownloadIcon /><span>data</span>
+              </button>
+              <button className="card-img-btn" onClick={(e) => { e.stopPropagation(); doDownload(false); }} disabled={copying !== null} title="Download figure">
+                <DownloadIcon /><span>figure</span>
+              </button>
+            </div>
+          )}
         </div>
         {!record.minimized && (
           <>
@@ -202,6 +212,14 @@ function CopyIcon() {
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
       <rect x="5" y="5" width="9" height="9" rx="1.5"/>
       <path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/>
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M8 2v9M4 7l4 4 4-4"/><path d="M2 13h12"/>
     </svg>
   );
 }

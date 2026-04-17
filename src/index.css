@@ -402,6 +402,42 @@ input[type="range"] {
   text-overflow: ellipsis;
 }
 
+/* ── card image action overlay (copy/download, shown on hover) ── */
+.card-img-actions {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  background: linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+.card-canvas-wrap:hover .card-img-actions { opacity: 1; }
+.card-img-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 6px;
+  background: rgba(255,255,255,0.18);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 5px;
+  color: white;
+  cursor: pointer;
+  font-size: 10px;
+  backdrop-filter: blur(4px);
+  transition: background 0.1s;
+  line-height: 1;
+}
+.card-img-btn span { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.2px; }
+.card-img-btn:hover:not(:disabled) { background: rgba(255,255,255,0.32); }
+.card-img-btn:disabled { opacity: 0.4; cursor: default; }
+
 /* ── drag overlay ── */
 .dnd-overlay .scan-card {
   box-shadow: 0 8px 32px rgba(0,0,0,0.18);

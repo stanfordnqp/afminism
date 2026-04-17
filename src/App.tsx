@@ -396,7 +396,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
 }) {
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
-  type Action = "copy-raw" | "copy-proc" | "dl-raw" | "dl-proc";
+  type Action = "copy-data" | "copy-figure" | "dl-data" | "dl-figure";
   const [copying, setCopying] = useState<Action | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -444,24 +444,53 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     toastTimer.current = setTimeout(() => setToast(null), 2000);
   }
 
+  function buildFigureCanvas(): HTMLCanvasElement {
+    const scanSize = 700;
+    const titleH = 40;
+    const statsH = 32;
+    const pad = 20;
+    const W = scanSize + 2 * pad;
+    const H = titleH + scanSize + statsH + 2 * pad;
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, W, H);
+    // title
+    ctx.fillStyle = "#111";
+    ctx.font = "bold 20px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(record.label, W / 2, pad + titleH / 2);
+    // scan with scale bar
+    const scanCvs = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, scanSize);
+    ctx.drawImage(scanCvs, pad, pad + titleH);
+    // stats
+    const parts = [`Rq = ${fmt(record.rms)} nm`];
+    if (opts.doClip) parts.push(`Rq* = ${fmt(record.rmsClipped)} nm`);
+    parts.push(`PtP = ${fmt(record.ptp)} nm`, `${record.scanUm[0]}×${record.scanUm[1]} µm`);
+    ctx.fillStyle = "#555";
+    ctx.font = "13px sans-serif";
+    ctx.fillText(parts.join("   "), W / 2, pad + titleH + scanSize + statsH / 2);
+    return c;
+  }
+
   async function doAction(action: Action) {
     setCopying(action);
-    const raw = action === "copy-raw" || action === "dl-raw";
-    const isDownload = action === "dl-raw" || action === "dl-proc";
+    const isData = action === "copy-data" || action === "dl-data";
+    const isDownload = action === "dl-data" || action === "dl-figure";
     try {
-      const cvs = raw
-        ? dataCanvasRef.current!
-        : renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, Math.max(record.side, 800));
+      const cvs = isData ? dataCanvasRef.current! : buildFigureCanvas();
       if (isDownload) {
         const a = document.createElement("a");
         a.href = cvs.toDataURL("image/png");
-        a.download = `${record.label}${raw ? "_raw" : ""}.png`;
+        a.download = `${record.label}${isData ? "_data" : "_figure"}.png`;
         a.click();
-        showToast(`Downloaded ${raw ? "raw" : "processed"}`);
+        showToast(`Downloaded ${isData ? "data" : "figure"}`);
       } else {
         const blob = await new Promise<Blob>((res) => cvs.toBlob((b) => res(b!), "image/png"));
         await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-        showToast(`Copied ${raw ? "raw" : "processed"}`);
+        showToast(`Copied ${isData ? "data" : "figure"}`);
       }
     } catch (e) {
       console.error(e);
@@ -486,21 +515,21 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
         />
         {/* copy / download group */}
         <div className="exp-action-group">
-          <button className="exp-action-btn" onClick={() => doAction("copy-raw")} disabled={copying !== null} title="Copy raw (no scale bar)">
-            {copying === "copy-raw" ? "…" : <CopyIcon />}
-            <span>raw</span>
+          <button className="exp-action-btn" onClick={() => doAction("copy-data")} disabled={copying !== null} title="Copy data image">
+            {copying === "copy-data" ? "…" : <CopyIcon />}
+            <span>data</span>
           </button>
-          <button className="exp-action-btn" onClick={() => doAction("copy-proc")} disabled={copying !== null} title="Copy processed (with scale bar)">
-            {copying === "copy-proc" ? "…" : <CopyIcon />}
-            <span>proc</span>
+          <button className="exp-action-btn" onClick={() => doAction("copy-figure")} disabled={copying !== null} title="Copy figure (title + scale bar + stats)">
+            {copying === "copy-figure" ? "…" : <CopyIcon />}
+            <span>figure</span>
           </button>
-          <button className="exp-action-btn" onClick={() => doAction("dl-raw")} disabled={copying !== null} title="Download raw PNG">
-            {copying === "dl-raw" ? "…" : <DownloadIcon />}
-            <span>raw</span>
+          <button className="exp-action-btn" onClick={() => doAction("dl-data")} disabled={copying !== null} title="Download data PNG">
+            {copying === "dl-data" ? "…" : <DownloadIcon />}
+            <span>data</span>
           </button>
-          <button className="exp-action-btn" onClick={() => doAction("dl-proc")} disabled={copying !== null} title="Download processed PNG">
-            {copying === "dl-proc" ? "…" : <DownloadIcon />}
-            <span>proc</span>
+          <button className="exp-action-btn" onClick={() => doAction("dl-figure")} disabled={copying !== null} title="Download figure PNG">
+            {copying === "dl-figure" ? "…" : <DownloadIcon />}
+            <span>figure</span>
           </button>
         </div>
         <span style={{ fontSize: 11, color: "#bbb", marginLeft: "auto" }}>{record.filename}</span>
