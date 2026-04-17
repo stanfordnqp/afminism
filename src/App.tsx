@@ -13,6 +13,7 @@ import { createPortal } from "react-dom";
 import Sidebar from "./Sidebar";
 import ScanCard from "./ScanCard";
 import Sparkles from "./Sparkles";
+import RainbowTrail from "./RainbowTrail";
 import { parseParkTiff } from "./tiff";
 import { reprocess, computeRms } from "./processing";
 import { toImageData, renderScanForExport, drawScaleBar } from "./colormap";
@@ -354,6 +355,7 @@ export default function App() {
       )}
 
       <Sparkles enabled={sparkles} />
+      <RainbowTrail enabled={sparkles} />
 
       <input ref={fileInputRef} type="file" multiple accept=".tiff,.tif" style={{ display: "none" }}
         onChange={(e) => { if (e.target.files) loadFiles(e.target.files); e.target.value = ""; }} />

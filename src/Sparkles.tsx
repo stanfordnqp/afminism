@@ -105,23 +105,14 @@ export default function Sparkles({ enabled }: { enabled: boolean }) {
     return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
   }, []);
 
-  // Input listeners
+  // Click burst only — mouse move is handled by RainbowTrail
   useEffect(() => {
-    let lastMove = 0;
-    function onMove(e: MouseEvent) {
-      if (!enabledRef.current) return;
-      const now = Date.now();
-      if (now - lastMove < 25) return;
-      lastMove = now;
-      spawnBurst(particlesRef.current, e.clientX, e.clientY, 4);
-    }
     function onClick(e: MouseEvent) {
       if (!enabledRef.current) return;
       spawnBurst(particlesRef.current, e.clientX, e.clientY, 35, true);
     }
-    window.addEventListener("mousemove", onMove);
     window.addEventListener("click", onClick);
-    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("click", onClick); };
+    return () => window.removeEventListener("click", onClick);
   }, []);
 
   return <canvas ref={canvasRef} style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999 }} />;

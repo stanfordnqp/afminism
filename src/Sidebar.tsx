@@ -133,15 +133,15 @@ export default function Sidebar({ open, onToggle: _onToggle, opts, onChange, sca
 
         {/* ── Sparkles ── */}
         <div className="sidebar-section" style={{ paddingBottom: 16 }}>
-          <button
-            className={`sparkles-toggle-btn${sparkles ? " active" : ""}`}
-            onClick={onSparklesToggle}
-            title={sparkles ? "Disable sparkles" : "Enable sparkles"}
-          >
-            <span className="sparkles-icon">✨</span>
-            <span>Sparkles</span>
-            <span className={`sparkles-pip${sparkles ? " on" : ""}`} />
-          </button>
+          <div className="sidebar-row" style={{ justifyContent: "space-between" }}>
+            <span style={{ fontSize: 13, color: "#444" }}>✨ Sparkles</span>
+            <label className="toggle-switch" title={sparkles ? "Disable sparkles" : "Enable sparkles"}>
+              <input type="checkbox" checked={sparkles} onChange={onSparklesToggle} />
+              <span className="toggle-track">
+                <span className="toggle-thumb" />
+              </span>
+            </label>
+          </div>
         </div>
       </div>
     </div>
