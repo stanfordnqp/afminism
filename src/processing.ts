@@ -156,7 +156,7 @@ export function reprocess(
   opts: Pick<ProcessingOptions, "doPlane" | "planeSigma" | "doLines">,
   rotation: number
 ): Float32Array {
-  let z = zRaw.slice();
+  let z: Float32Array = new Float32Array(zRaw);
   const k = ((rotation / 90) % 4 + 4) % 4;
   if (k) z = rot90cw(z, side, k);
   if (opts.doPlane) {
