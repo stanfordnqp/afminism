@@ -9,6 +9,13 @@ interface Particle {
   shape: 0 | 1 | 2; // 0=star, 1=diamond, 2=circle
 }
 
+interface Unicorn {
+  x: number; y: number;
+  vy: number;
+  life: number;
+  size: number;
+}
+
 const COLORS = [
   "#FFD700", "#FF69B4", "#FF1493", "#00CFFF", "#7CFC00", "#FF6347",
   "#C084FC", "#F9A8D4", "#67E8F9", "#86EFAC", "#FDBA74",
@@ -19,7 +26,6 @@ function spawnBurst(particles: Particle[], x: number, y: number, count: number, 
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = burst ? Math.random() * 11 + 3 : Math.random() * 4 + 1;
-    // Bias toward stars (shape 0) for more sparkly look
     const shapeRoll = Math.random();
     const shape = (shapeRoll < 0.6 ? 0 : shapeRoll < 0.8 ? 1 : 2) as 0 | 1 | 2;
     particles.push({
@@ -56,7 +62,6 @@ function drawParticle(ctx: CanvasRenderingContext2D, p: Particle) {
   ctx.rotate(p.rotation);
   ctx.globalAlpha = Math.max(0, p.life);
   ctx.fillStyle = p.color;
-  // Glow for bright sparkle effect
   ctx.shadowBlur = p.size * 2.5;
   ctx.shadowColor = p.color;
   if (p.shape === 0) {
@@ -80,6 +85,7 @@ function drawParticle(ctx: CanvasRenderingContext2D, p: Particle) {
 export default function Sparkles({ enabled }: { enabled: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
+  const unicornsRef = useRef<Unicorn[]>([]);
   const enabledRef = useRef(enabled);
 
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
@@ -95,6 +101,8 @@ export default function Sparkles({ enabled }: { enabled: boolean }) {
     function tick() {
       const ctx = canvas.getContext("2d")!;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Particles
       particlesRef.current = particlesRef.current.filter(p => p.life > 0);
       for (const p of particlesRef.current) {
         p.vy += 0.18;
@@ -105,6 +113,23 @@ export default function Sparkles({ enabled }: { enabled: boolean }) {
         p.rotation += p.rotationSpeed;
         drawParticle(ctx, p);
       }
+
+      // Unicorns — float upward and fade
+      unicornsRef.current = unicornsRef.current.filter(u => u.life > 0);
+      for (const u of unicornsRef.current) {
+        u.y += u.vy;
+        u.life -= 0.007;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, u.life);
+        ctx.font = `${u.size}px serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = "#f9a8d4";
+        ctx.fillText("🦄", u.x, u.y);
+        ctx.restore();
+      }
+
       raf = requestAnimationFrame(tick);
     }
     raf = requestAnimationFrame(tick);
@@ -115,6 +140,16 @@ export default function Sparkles({ enabled }: { enabled: boolean }) {
     function onClick(e: MouseEvent) {
       if (!enabledRef.current) return;
       spawnBurst(particlesRef.current, e.clientX, e.clientY, 55, true);
+      // ~15% chance of a unicorn
+      if (Math.random() < 0.15) {
+        unicornsRef.current.push({
+          x: e.clientX + (Math.random() - 0.5) * 40,
+          y: e.clientY,
+          vy: -(Math.random() * 1.5 + 1.2),
+          life: 1,
+          size: Math.round(Math.random() * 20 + 28),
+        });
+      }
     }
     function onMouseUp(e: MouseEvent) {
       if (!enabledRef.current) return;

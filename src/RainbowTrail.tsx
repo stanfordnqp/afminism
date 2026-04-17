@@ -1,43 +1,16 @@
 import { useEffect, useRef } from "react";
 
-interface Arc {
-  x: number;
-  y: number;
-  vy: number;
-  vx: number;
-  life: number; // 1 → 0
-  radius: number;
-}
+interface Pt { x: number; y: number; t: number; }
 
-// Outer → inner bands
-const BANDS = ["#FF5555", "#FF9933", "#FFE033", "#55DD55", "#4499FF", "#AA44EE"];
-const BAND_W = 2.0;
-const BAND_GAP = 1.1;
-
-function drawArc(ctx: CanvasRenderingContext2D, arc: Arc) {
-  ctx.save();
-  ctx.globalAlpha = arc.life * 0.36;
-  ctx.lineWidth = BAND_W;
-  ctx.lineCap = "round";
-  for (let i = 0; i < BANDS.length; i++) {
-    const r = arc.radius - i * (BAND_W + BAND_GAP);
-    if (r < 1) break;
-    ctx.beginPath();
-    // anticlockwise arc from π→0 = top half = arch ∩ shape
-    ctx.arc(arc.x, arc.y, r, Math.PI, 0, true);
-    ctx.strokeStyle = BANDS[i];
-    ctx.stroke();
-  }
-  ctx.restore();
-}
+const DURATION = 320; // ms the tail lives
 
 export default function RainbowTrail({ enabled }: { enabled: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const arcsRef = useRef<Arc[]>([]);
+  const trailRef = useRef<Pt[]>([]);
   const enabledRef = useRef(enabled);
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
 
-  // Animation loop
+  // Animation loop — always runs so tail finishes fading after toggle-off
   useEffect(() => {
     const canvas = canvasRef.current!;
     function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
@@ -48,36 +21,48 @@ export default function RainbowTrail({ enabled }: { enabled: boolean }) {
     function tick() {
       const ctx = canvas.getContext("2d")!;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      arcsRef.current = arcsRef.current.filter(a => a.life > 0);
-      for (const a of arcsRef.current) {
-        a.y += a.vy;
-        a.x += a.vx;
-        a.vy -= 0.012;       // gentle upward acceleration
-        a.life -= 0.018;
-        drawArc(ctx, a);
+
+      const now = Date.now();
+      // Drop expired points
+      const cutoff = now - DURATION;
+      const pts = trailRef.current.filter(p => p.t >= cutoff);
+      trailRef.current = pts;
+
+      if (pts.length >= 2) {
+        // Draw segments from tail (oldest) to head (newest)
+        for (let i = 1; i < pts.length; i++) {
+          const frac = i / (pts.length - 1);   // 0=tail, 1=head
+          const age = now - pts[i].t;
+          const ageFrac = age / DURATION;        // 0=fresh, 1=dead
+
+          // Rainbow: head=red, tail=violet — full ROYGBIV arc
+          const hue = (1 - frac) * 270;
+          const alpha = (1 - ageFrac) * (0.55 + frac * 0.35);
+          const width = 1 + frac * 9;           // tapers thin at tail
+
+          ctx.beginPath();
+          ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+          ctx.lineTo(pts[i].x, pts[i].y);
+          ctx.strokeStyle = `hsla(${hue}, 100%, 62%, ${alpha})`;
+          ctx.lineWidth = width;
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          ctx.stroke();
+        }
       }
+
       raf = requestAnimationFrame(tick);
     }
     raf = requestAnimationFrame(tick);
     return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
   }, []);
 
-  // Emit arcs on mouse move
   useEffect(() => {
-    let last = 0;
     function onMove(e: MouseEvent) {
       if (!enabledRef.current) return;
-      const now = Date.now();
-      if (now - last < 45) return;
-      last = now;
-      arcsRef.current.push({
-        x: e.clientX + (Math.random() - 0.5) * 8,
-        y: e.clientY + (Math.random() - 0.5) * 4,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: -(Math.random() * 0.6 + 0.3),
-        life: 0.7 + Math.random() * 0.3,
-        radius: 13 + Math.random() * 9,
-      });
+      trailRef.current.push({ x: e.clientX, y: e.clientY, t: Date.now() });
+      // Cap array size to avoid unbounded growth during fast movement
+      if (trailRef.current.length > 120) trailRef.current.splice(0, 20);
     }
     window.addEventListener("mousemove", onMove);
     return () => window.removeEventListener("mousemove", onMove);

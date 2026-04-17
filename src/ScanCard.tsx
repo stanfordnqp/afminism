@@ -12,12 +12,13 @@ interface Props {
   onRotate: () => void;
   onMinimize: () => void;
   onExpand: () => void;
+  isNew?: boolean;
   /** When true the card is rendered inside the dnd overlay — no sortable hooks needed */
   isOverlay?: boolean;
 }
 
 export default function ScanCard({
-  record, opts, onRemove, onLabelChange, onRotate, onMinimize, onExpand, isOverlay,
+  record, opts, onRemove, onLabelChange, onRotate, onMinimize, onExpand, isNew, isOverlay,
 }: Props) {
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -36,21 +37,21 @@ export default function ScanCard({
   for (let j = 0; j < record.z.length; j++) if (Math.abs(record.z[j]) > maxAbs) maxAbs = Math.abs(record.z[j]);
   const lim = opts.doClip ? opts.climSigma * record.rmsClipped : maxAbs || 1;
 
-  // ── render raw pixel data ─────────────────────────────────────────────────
+  // ── render raw pixel data (always, including when minimized for preview) ──
   useEffect(() => {
     const canvas = dataCanvasRef.current;
-    if (!canvas || record.minimized) return;
+    if (!canvas) return;
     canvas.width = record.side;
     canvas.height = record.side;
     const img = toImageData(record.z, record.side, -lim, lim, opts.doClip);
     canvas.getContext("2d")!.putImageData(img, 0, 0);
-  }, [record.z, record.side, record.minimized, lim, opts.doClip]);
+  }, [record.z, record.side, lim, opts.doClip]);
 
   // ── render scale bar on HiDPI overlay canvas via ResizeObserver ───────────
   useEffect(() => {
     const dataCanvas = dataCanvasRef.current;
     const sbCanvas = scaleBarCanvasRef.current;
-    if (!dataCanvas || !sbCanvas || record.minimized) return;
+    if (!dataCanvas || !sbCanvas) return;
 
     function redraw() {
       if (!dataCanvas || !sbCanvas) return;
@@ -62,6 +63,8 @@ export default function ScanCard({
       sbCanvas.height = Math.round(h * dpr);
       const ctx = sbCanvas.getContext("2d")!;
       ctx.clearRect(0, 0, sbCanvas.width, sbCanvas.height);
+      // Don't draw scale bar on minimized preview
+      if (record.minimized) return;
       ctx.save();
       ctx.scale(dpr, dpr);
       drawScaleBar(ctx, record.scanUm[0], w);
@@ -103,12 +106,14 @@ export default function ScanCard({
     `${scanUm[0]}×${scanUm[1]} µm`,
   ].join("   ");
 
+  const classes = [
+    "scan-card",
+    record.minimized ? "minimized" : "",
+    isNew ? "is-new" : "",
+  ].filter(Boolean).join(" ");
+
   return (
-    <div
-      ref={setRef}
-      style={style}
-      className={`scan-card${record.minimized ? " minimized" : ""}`}
-    >
+    <div ref={setRef} style={style} className={classes}>
       <div className="card-header">
         <span
           className="drag-handle"
@@ -135,21 +140,27 @@ export default function ScanCard({
           <button className="icon-btn" onClick={onExpand} title="Expand fullscreen">
             <ExpandIcon />
           </button>
-          <button className="icon-btn" onClick={onMinimize} title={record.minimized ? "Expand card" : "Minimize card"}>
-            {record.minimized ? "▿" : "▵"}
+          <button className="icon-btn" onClick={onMinimize} title={record.minimized ? "Show" : "Hide"}>
+            {record.minimized ? <EyeOffIcon /> : <EyeIcon />}
           </button>
           <button className="icon-btn danger" onClick={onRemove} title="Remove">✕</button>
         </div>
       </div>
-      <div className="card-body">
+      <div
+        className="card-body"
+        onDoubleClick={!record.minimized ? onExpand : undefined}
+        title={!record.minimized ? "Double-click to expand" : undefined}
+      >
         <div className="card-canvas-wrap">
-          {/* Raw data: pixelated upscale */}
           <canvas ref={dataCanvasRef} className="data-canvas" />
-          {/* Scale bar: separate HiDPI overlay, not drawn on data canvas */}
           <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
         </div>
-        <div className="card-stats">{statsLine}</div>
-        <div className="card-filename" title={record.filename}>{record.filename}</div>
+        {!record.minimized && (
+          <>
+            <div className="card-stats">{statsLine}</div>
+            <div className="card-filename" title={record.filename}>{record.filename}</div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -199,6 +210,23 @@ function ExpandIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
       <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/>
+    </svg>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/>
+      <circle cx="8" cy="8" r="2"/>
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M2 2l12 12M6.7 6.7A2 2 0 0 0 9.3 9.3M4.1 4.1C2.4 5.2 1 8 1 8s2.5 5 7 5c1.4 0 2.7-.4 3.9-1.1M7 3.1C7.3 3 7.7 3 8 3c4.5 0 7 5 7 5s-.7 1.4-1.9 2.7"/>
     </svg>
   );
 }

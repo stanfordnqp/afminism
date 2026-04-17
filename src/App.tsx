@@ -41,6 +41,7 @@ export default function App() {
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
   const [figureUrl, setFigureUrl] = useState<string | null>(null);
   const [figureBlob, setFigureBlob] = useState<Blob | null>(null);
   const [generatingFigure, setGeneratingFigure] = useState(false);
@@ -48,7 +49,7 @@ export default function App() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  // ── Escape closes modals ─────────────────────────────────────────────────
+  // ── Escape closes expanded view / figure modal ────────────────────────────
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -108,7 +109,19 @@ export default function App() {
         alert(`Could not parse ${file.name}:\n${e}`);
       }
     }
-    if (newScans.length) setScans((s) => [...s, ...newScans]);
+    if (newScans.length) {
+      setScans((s) => [...s, ...newScans]);
+      // Mark new scans for sparkle glow, clear after 3s
+      const ids = newScans.map((s) => s.id);
+      setNewIds((prev) => new Set([...prev, ...ids]));
+      setTimeout(() => {
+        setNewIds((prev) => {
+          const next = new Set(prev);
+          ids.forEach((id) => next.delete(id));
+          return next;
+        });
+      }, 3000);
+    }
   }
 
   // ── drop zone ─────────────────────────────────────────────────────────────
@@ -122,7 +135,10 @@ export default function App() {
 
   // ── card callbacks ────────────────────────────────────────────────────────
 
-  function removeCard(id: string) { setScans((s) => s.filter((r) => r.id !== id)); }
+  function removeCard(id: string) {
+    setScans((s) => s.filter((r) => r.id !== id));
+    if (expandedId === id) setExpandedId(null);
+  }
   function labelCard(id: string, label: string) { setScans((s) => s.map((r) => r.id === id ? { ...r, label } : r)); }
   function rotateCard(id: string) {
     setScans((s) => s.map((r) => {
@@ -159,7 +175,7 @@ export default function App() {
 
     const cols = opts.columns;
     const rows = Math.ceil(visible.length / cols);
-    const scanSize = 700; // px per cell image (high-res)
+    const scanSize = 700;
     const titleH = 36;
     const statsH = 30;
     const gap = 20;
@@ -190,14 +206,12 @@ export default function App() {
       const scanCanvas = renderScanForExport(r.z, r.side, r.scanUm, -lim, lim, opts.doClip, scanSize);
       ctx.drawImage(scanCanvas, x, y + titleH);
 
-      // Title
       ctx.fillStyle = "#111";
       ctx.font = "bold 18px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(r.label, x + cellW / 2, y + titleH / 2);
 
-      // Stats
       const parts = [`Rq = ${fmt(r.rms)} nm`];
       if (opts.doClip) parts.push(`Rq* = ${fmt(r.rmsClipped)} nm`);
       parts.push(`PtP = ${fmt(r.ptp)} nm`, `${r.scanUm[0]}×${r.scanUm[1]} µm`);
@@ -239,7 +253,7 @@ export default function App() {
   }
 
   const draggingRecord = scans.find((s) => s.id === dragging);
-  const expandedRecord = expandedId ? scans.find((s) => s.id === expandedId) : null;
+  const expandedRecord = expandedId ? scans.find((s) => s.id === expandedId) ?? null : null;
 
   return (
     <DndContext sensors={sensors} onDragStart={onDndStart} onDragEnd={onDndEnd}>
@@ -263,50 +277,62 @@ export default function App() {
       </button>
 
       <main className="main">
-        <div
-          className={`drop-zone${dragOver ? " drag-over" : ""}`}
-          onDragEnter={onDragEnter}
-          onDragLeave={onDragLeave}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
-        >
-          {scans.length === 0 && (
-            <div className="empty-hint">
-              <DropIcon />
-              <p>Drop Park Systems TIFF files here</p>
-              <small>or click to browse</small>
-              <button className="add-files-btn" onClick={() => fileInputRef.current?.click()}>
-                Browse files
-              </button>
-            </div>
-          )}
-
-          {scans.length > 0 && (
-            <>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+        {/* ── Expanded single-scan view ── */}
+        {expandedRecord ? (
+          <ExpandedView
+            record={expandedRecord}
+            opts={opts}
+            onClose={() => setExpandedId(null)}
+            onRotate={() => rotateCard(expandedRecord.id)}
+            onLabelChange={(l) => labelCard(expandedRecord.id, l)}
+          />
+        ) : (
+          <div
+            className={`drop-zone${dragOver ? " drag-over" : ""}`}
+            onDragEnter={onDragEnter}
+            onDragLeave={onDragLeave}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+          >
+            {scans.length === 0 && (
+              <div className="empty-hint">
+                <DropIcon />
+                <p>Drop Park Systems TIFF files here</p>
+                <small>or click to browse</small>
                 <button className="add-files-btn" onClick={() => fileInputRef.current?.click()}>
-                  + Add files
+                  Browse files
                 </button>
               </div>
-              <SortableContext items={scans.map((s) => s.id)} strategy={rectSortingStrategy}>
-                <div className="card-grid" style={{ "--cols": opts.columns } as React.CSSProperties}>
-                  {scans.map((r) => (
-                    <ScanCard
-                      key={r.id}
-                      record={r}
-                      opts={opts}
-                      onRemove={() => removeCard(r.id)}
-                      onLabelChange={(l) => labelCard(r.id, l)}
-                      onRotate={() => rotateCard(r.id)}
-                      onMinimize={() => minimizeCard(r.id)}
-                      onExpand={() => setExpandedId(r.id)}
-                    />
-                  ))}
+            )}
+
+            {scans.length > 0 && (
+              <>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                  <button className="add-files-btn" onClick={() => fileInputRef.current?.click()}>
+                    + Add files
+                  </button>
                 </div>
-              </SortableContext>
-            </>
-          )}
-        </div>
+                <SortableContext items={scans.map((s) => s.id)} strategy={rectSortingStrategy}>
+                  <div className="card-grid" style={{ "--cols": opts.columns } as React.CSSProperties}>
+                    {scans.map((r) => (
+                      <ScanCard
+                        key={r.id}
+                        record={r}
+                        opts={opts}
+                        onRemove={() => removeCard(r.id)}
+                        onLabelChange={(l) => labelCard(r.id, l)}
+                        onRotate={() => rotateCard(r.id)}
+                        onMinimize={() => minimizeCard(r.id)}
+                        onExpand={() => setExpandedId(r.id)}
+                        isNew={newIds.has(r.id)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </>
+            )}
+          </div>
+        )}
       </main>
 
       {/* ── dnd drag overlay ── */}
@@ -322,12 +348,6 @@ export default function App() {
             </div>
           )}
         </DragOverlay>,
-        document.body
-      )}
-
-      {/* ── fullscreen card modal ── */}
-      {expandedRecord && createPortal(
-        <FullscreenModal record={expandedRecord} opts={opts} onClose={() => setExpandedId(null)} />,
         document.body
       )}
 
@@ -363,18 +383,25 @@ export default function App() {
   );
 }
 
-// ── Fullscreen modal ──────────────────────────────────────────────────────────
+// ── Expanded view (replaces grid when a card is opened) ───────────────────────
 
-function FullscreenModal({ record, opts, onClose }: { record: ScanRecord; opts: ProcessingOptions; onClose: () => void }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const scaleBarRef = useRef<HTMLCanvasElement>(null);
+function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
+  record: ScanRecord;
+  opts: ProcessingOptions;
+  onClose: () => void;
+  onRotate: () => void;
+  onLabelChange: (l: string) => void;
+}) {
+  const dataCanvasRef = useRef<HTMLCanvasElement>(null);
+  const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [copying, setCopying] = useState<null | "scaled" | "raw">(null);
 
   let maxAbs = 0;
   for (let j = 0; j < record.z.length; j++) if (Math.abs(record.z[j]) > maxAbs) maxAbs = Math.abs(record.z[j]);
   const lim = opts.doClip ? opts.climSigma * record.rmsClipped : maxAbs || 1;
 
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const canvas = dataCanvasRef.current;
     if (!canvas) return;
     canvas.width = record.side;
     canvas.height = record.side;
@@ -382,10 +409,9 @@ function FullscreenModal({ record, opts, onClose }: { record: ScanRecord; opts: 
     canvas.getContext("2d")!.putImageData(img, 0, 0);
   }, [record.z, record.side, lim, opts.doClip]);
 
-  // Scale bar on overlay canvas
   useEffect(() => {
-    const data = canvasRef.current;
-    const sb = scaleBarRef.current;
+    const data = dataCanvasRef.current;
+    const sb = scaleBarCanvasRef.current;
     if (!data || !sb) return;
     function draw() {
       if (!data || !sb) return;
@@ -407,6 +433,29 @@ function FullscreenModal({ record, opts, onClose }: { record: ScanRecord; opts: 
     return () => obs.disconnect();
   }, [record.scanUm]);
 
+  async function doCopy(raw: boolean) {
+    setCopying(raw ? "raw" : "scaled");
+    try {
+      let blob: Blob;
+      if (raw) {
+        blob = await new Promise<Blob>((res) => dataCanvasRef.current!.toBlob((b) => res(b!), "image/png"));
+      } else {
+        const size = Math.max(record.side, 800);
+        const out = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, size);
+        blob = await new Promise<Blob>((res) => out.toBlob((b) => res(b!), "image/png"));
+      }
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    } catch {
+      const cvs = raw ? dataCanvasRef.current! : renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, Math.max(record.side, 800));
+      const a = document.createElement("a");
+      a.href = cvs.toDataURL("image/png");
+      a.download = `${record.label}${raw ? "_raw" : ""}.png`;
+      a.click();
+    } finally {
+      setCopying(null);
+    }
+  }
+
   const statsLine = [
     `Rq = ${fmt(record.rms)} nm`,
     ...(opts.doClip ? [`Rq* = ${fmt(record.rmsClipped)} nm`] : []),
@@ -415,30 +464,47 @@ function FullscreenModal({ record, opts, onClose }: { record: ScanRecord; opts: 
   ].join("   ");
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="fullscreen-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="fullscreen-modal-header">
-          <span style={{ fontWeight: 700, fontSize: 16 }}>{record.label}</span>
-          <button className="icon-btn danger" onClick={onClose} title="Close (Esc)">✕</button>
-        </div>
-        <div className="card-canvas-wrap fullscreen-canvas-wrap">
-          <canvas ref={canvasRef} className="data-canvas" />
-          <canvas ref={scaleBarRef} className="scalebar-canvas" />
-        </div>
-        <div style={{ padding: "10px 16px", textAlign: "center", fontSize: 13, color: "#555" }}>
-          {statsLine}
+    <div className="expanded-view">
+      <div className="expanded-header">
+        <button className="icon-btn" onClick={onClose} title="Back to grid (Esc)" style={{ marginRight: 4 }}>
+          <BackIcon />
+        </button>
+        <input
+          className="card-title-input"
+          value={record.label}
+          onChange={(e) => onLabelChange(e.target.value)}
+          title="Click to rename"
+          style={{ fontSize: 15, fontWeight: 700, maxWidth: 220 }}
+        />
+        <button className="icon-btn" onClick={onRotate} title="Rotate 90° clockwise" style={{ marginLeft: 4 }}>↻</button>
+        <button className="icon-btn" onClick={() => doCopy(false)} title="Copy with scale bar" disabled={copying !== null}>
+          {copying === "scaled" ? "…" : <CopyIcon />}
+        </button>
+        <button className="icon-btn" onClick={() => doCopy(true)} title="Copy raw" disabled={copying !== null} style={{ fontSize: 10, fontWeight: 600 }}>
+          {copying === "raw" ? "…" : "raw"}
+        </button>
+        <span className="expanded-stats">{statsLine}</span>
+        <span style={{ fontSize: 11, color: "#bbb", marginLeft: "auto" }}>{record.filename}</span>
+      </div>
+      <div className="expanded-canvas-area">
+        <div className="card-canvas-wrap expanded-canvas-wrap">
+          <canvas ref={dataCanvasRef} className="data-canvas" />
+          <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
         </div>
       </div>
     </div>
   );
 }
 
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
   if (n === 0) return "0";
   const mag = Math.floor(Math.log10(Math.abs(n)));
   return n.toFixed(Math.max(0, 2 - mag));
 }
+
+// ── icons ─────────────────────────────────────────────────────────────────────
 
 function DropIcon() {
   return (
@@ -448,3 +514,21 @@ function DropIcon() {
     </svg>
   );
 }
+
+function BackIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M10 2L4 8l6 6"/>
+    </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="5" y="5" width="9" height="9" rx="1.5"/>
+      <path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/>
+    </svg>
+  );
+}
+
