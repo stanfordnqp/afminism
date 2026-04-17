@@ -6,7 +6,7 @@ interface Particle {
   life: number; decay: number;
   size: number; color: string;
   rotation: number; rotationSpeed: number;
-  shape: 0 | 1 | 2; // 0=star, 1=diamond, 2=circle
+  shape: 0 | 1 | 2;
 }
 
 interface Unicorn {
@@ -22,8 +22,13 @@ const COLORS = [
   "#FDE68A", "#E0E0FF", "#ffffff", "#FFAAFF", "#AAFFFF",
 ];
 
+const MAX_PARTICLES = 250;
+
 function spawnBurst(particles: Particle[], x: number, y: number, count: number, burst = false) {
-  for (let i = 0; i < count; i++) {
+  const room = MAX_PARTICLES - particles.length;
+  if (room <= 0) return;
+  const actual = Math.min(count, room);
+  for (let i = 0; i < actual; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = burst ? Math.random() * 11 + 3 : Math.random() * 4 + 1;
     const shapeRoll = Math.random();
@@ -41,6 +46,27 @@ function spawnBurst(particles: Particle[], x: number, y: number, count: number, 
       shape,
     });
   }
+}
+
+function spawnDrip(particles: Particle[], x: number, y: number) {
+  if (particles.length >= MAX_PARTICLES) return;
+  const angle = Math.random() * Math.PI * 2;
+  const speed = Math.random() * 1.2 + 0.3;
+  const shapeRoll = Math.random();
+  const shape = (shapeRoll < 0.65 ? 0 : shapeRoll < 0.85 ? 1 : 2) as 0 | 1 | 2;
+  particles.push({
+    x: x + (Math.random() - 0.5) * 8,
+    y: y + (Math.random() - 0.5) * 8,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed - 0.5,
+    life: 0.8 + Math.random() * 0.2,
+    decay: Math.random() * 0.022 + 0.014,
+    size: Math.random() * 4 + 1.5,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    rotation: Math.random() * Math.PI * 2,
+    rotationSpeed: (Math.random() - 0.5) * 0.4,
+    shape,
+  });
 }
 
 function drawStar(ctx: CanvasRenderingContext2D, r: number) {
@@ -87,10 +113,11 @@ export default function Sparkles({ enabled }: { enabled: boolean }) {
   const particlesRef = useRef<Particle[]>([]);
   const unicornsRef = useRef<Unicorn[]>([]);
   const enabledRef = useRef(enabled);
+  // Cursor drip throttle
+  const lastDripRef = useRef<{ x: number; y: number; t: number }>({ x: 0, y: 0, t: 0 });
 
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
 
-  // Animation loop — always running so particles finish after toggle-off
   useEffect(() => {
     const canvas = canvasRef.current!;
     function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
@@ -102,7 +129,6 @@ export default function Sparkles({ enabled }: { enabled: boolean }) {
       const ctx = canvas.getContext("2d")!;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Particles
       particlesRef.current = particlesRef.current.filter(p => p.life > 0);
       for (const p of particlesRef.current) {
         p.vy += 0.18;
@@ -114,7 +140,6 @@ export default function Sparkles({ enabled }: { enabled: boolean }) {
         drawParticle(ctx, p);
       }
 
-      // Unicorns — float upward and fade
       unicornsRef.current = unicornsRef.current.filter(u => u.life > 0);
       for (const u of unicornsRef.current) {
         u.y += u.vy;
@@ -136,11 +161,30 @@ export default function Sparkles({ enabled }: { enabled: boolean }) {
     return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
   }, []);
 
+  // Continuous cursor drip
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!enabledRef.current) return;
+      const now = Date.now();
+      const last = lastDripRef.current;
+      const dx = e.clientX - last.x;
+      const dy = e.clientY - last.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      // Spawn 1-2 drips every ~40ms or 10px of movement, whichever triggers first
+      if (now - last.t < 40 && dist < 10) return;
+      lastDripRef.current = { x: e.clientX, y: e.clientY, t: now };
+      const count = dist > 20 ? 2 : 1;
+      for (let i = 0; i < count; i++) spawnDrip(particlesRef.current, e.clientX, e.clientY);
+    }
+    window.addEventListener("mousemove", onMove);
+    return () => window.removeEventListener("mousemove", onMove);
+  }, []);
+
+  // Click / mouseup bursts
   useEffect(() => {
     function onClick(e: MouseEvent) {
       if (!enabledRef.current) return;
       spawnBurst(particlesRef.current, e.clientX, e.clientY, 55, true);
-      // ~15% chance of a unicorn
       if (Math.random() < 0.15) {
         unicornsRef.current.push({
           x: e.clientX + (Math.random() - 0.5) * 40,
