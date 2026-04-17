@@ -582,7 +582,8 @@ input[type="range"] {
   padding: 0;
   line-height: 1;
 }
-.expanded-canvas-wrap:hover .canvas-rotate-btn { opacity: 1; }
+.expanded-canvas-wrap:hover .canvas-rotate-btn,
+.card-canvas-wrap:hover .canvas-rotate-btn { opacity: 1; }
 .canvas-rotate-btn:hover { background: rgba(0,0,0,0.65); }
 
 /* ── stats panel (right column in expanded view) ── */
