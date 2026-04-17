@@ -299,7 +299,7 @@ export default function App() {
                 <DropIcon />
                 <p>Drop Park Systems TIFF files here</p>
                 <small>or click to browse</small>
-                <button className="add-files-btn" onClick={() => fileInputRef.current?.click()}>
+                <button className="add-files-btn-empty" onClick={() => fileInputRef.current?.click()}>
                   Browse files
                 </button>
               </div>
@@ -307,11 +307,6 @@ export default function App() {
 
             {scans.length > 0 && (
               <>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-                  <button className="add-files-btn" onClick={() => fileInputRef.current?.click()}>
-                    + Add files
-                  </button>
-                </div>
                 <SortableContext items={scans.map((s) => s.id)} strategy={rectSortingStrategy}>
                   <div className="card-grid" style={{ "--cols": opts.columns } as React.CSSProperties}>
                     {scans.map((r) => (
@@ -372,6 +367,13 @@ export default function App() {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* ── floating add button ── */}
+      {!expandedRecord && (
+        <button className="fab-add" onClick={() => fileInputRef.current?.click()} title="Add files">
+          +
+        </button>
       )}
 
       <Sparkles enabled={sparkles} />
@@ -456,13 +458,6 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     }
   }
 
-  const statsLine = [
-    `Rq = ${fmt(record.rms)} nm`,
-    ...(opts.doClip ? [`Rq* = ${fmt(record.rmsClipped)} nm`] : []),
-    `PtP = ${fmt(record.ptp)} nm`,
-    `${record.scanUm[0]}×${record.scanUm[1]} µm`,
-  ].join("   ");
-
   return (
     <div className="expanded-view">
       <div className="expanded-header">
@@ -483,15 +478,52 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
         <button className="icon-btn" onClick={() => doCopy(true)} title="Copy raw" disabled={copying !== null} style={{ fontSize: 10, fontWeight: 600 }}>
           {copying === "raw" ? "…" : "raw"}
         </button>
-        <span className="expanded-stats">{statsLine}</span>
         <span style={{ fontSize: 11, color: "#bbb", marginLeft: "auto" }}>{record.filename}</span>
       </div>
-      <div className="expanded-canvas-area">
-        <div className="card-canvas-wrap expanded-canvas-wrap">
-          <canvas ref={dataCanvasRef} className="data-canvas" />
-          <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
+      <div className="expanded-body">
+        <div className="expanded-canvas-area">
+          <div className="card-canvas-wrap expanded-canvas-wrap">
+            <canvas ref={dataCanvasRef} className="data-canvas" />
+            <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
+          </div>
+        </div>
+        <div className="expanded-stats-panel">
+          <div className="expanded-stats-title">Analysis</div>
+          <StatRow label="Rq" value={`${fmt(record.rms)} nm`}
+            info="RMS roughness — root-mean-square of height deviations from mean. Standard roughness metric." />
+          {opts.doClip && (
+            <StatRow label="Rq*" value={`${fmt(record.rmsClipped)} nm`}
+              info={`Sigma-clipped RMS roughness (σ = ${opts.climSigma}). Outlier pixels beyond the color range are excluded, giving a roughness estimate robust to spikes and contamination.`} />
+          )}
+          <StatRow label="PtP" value={`${fmt(record.ptp)} nm`}
+            info="Peak-to-peak height range — difference between the maximum and minimum height values in the image." />
+          <StatRow label="Scan" value={`${record.scanUm[0]}×${record.scanUm[1]} µm`}
+            info="Physical size of the scanned area in micrometres." />
+          <StatRow label="Pixels" value={`${record.side}×${record.side}`}
+            info="Raw pixel resolution of the AFM scan." />
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── StatRow ───────────────────────────────────────────────────────────────────
+
+function StatRow({ label, value, info }: { label: string; value: string; info: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="stat-row">
+      <span className="stat-label">{label}</span>
+      <span className="stat-value">{value}</span>
+      <span className="stat-info-wrap">
+        <button className="stat-info-btn" onClick={() => setShow(v => !v)} title={info}>ⓘ</button>
+        {show && (
+          <div className="stat-info-popup">
+            {info}
+            <button className="stat-info-close" onClick={() => setShow(false)}>✕</button>
+          </div>
+        )}
+      </span>
     </div>
   );
 }
