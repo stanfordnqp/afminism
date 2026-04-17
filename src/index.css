@@ -486,3 +486,42 @@ input[type="range"] {
   color: white;
 }
 .modal-action-btn.primary:hover { background: #2563eb; }
+
+/* ── sparkles toggle ── */
+.sparkles-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1.5px solid #e4e4e4;
+  border-radius: 8px;
+  background: #fafafa;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #444;
+  transition: all 0.2s;
+}
+.sparkles-toggle-btn:hover {
+  border-color: #c084fc;
+  background: #fdf4ff;
+  color: #7e22ce;
+}
+.sparkles-toggle-btn.active {
+  border-color: #c084fc;
+  background: linear-gradient(135deg, #fdf4ff, #fce7f3);
+  color: #7e22ce;
+  box-shadow: 0 0 0 3px rgba(192,132,252,0.2);
+}
+.sparkles-icon { font-size: 16px; }
+.sparkles-pip {
+  margin-left: auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d1d5db;
+  transition: background 0.2s, box-shadow 0.2s;
+  flex-shrink: 0;
+}
+.sparkles-pip.on { background: #c084fc; box-shadow: 0 0 6px rgba(192,132,252,0.7); }

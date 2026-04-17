@@ -8,9 +8,11 @@ interface Props {
   scans: ScanRecord[];
   onGenerateFigure: () => void;
   generatingFigure: boolean;
+  sparkles: boolean;
+  onSparklesToggle: () => void;
 }
 
-export default function Sidebar({ open, onToggle: _onToggle, opts, onChange, scans, onGenerateFigure, generatingFigure }: Props) {
+export default function Sidebar({ open, onToggle: _onToggle, opts, onChange, scans, onGenerateFigure, generatingFigure, sparkles, onSparklesToggle }: Props) {
   const hasScans = scans.some((s) => !s.minimized);
 
   return (
@@ -124,6 +126,21 @@ export default function Sidebar({ open, onToggle: _onToggle, opts, onChange, sca
           >
             <FigureIcon />
             {generatingFigure ? "Generating…" : "Generate figure"}
+          </button>
+        </div>
+
+        <div className="sidebar-divider" />
+
+        {/* ── Sparkles ── */}
+        <div className="sidebar-section" style={{ paddingBottom: 16 }}>
+          <button
+            className={`sparkles-toggle-btn${sparkles ? " active" : ""}`}
+            onClick={onSparklesToggle}
+            title={sparkles ? "Disable sparkles" : "Enable sparkles"}
+          >
+            <span className="sparkles-icon">✨</span>
+            <span>Sparkles</span>
+            <span className={`sparkles-pip${sparkles ? " on" : ""}`} />
           </button>
         </div>
       </div>

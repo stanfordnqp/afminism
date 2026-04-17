@@ -12,6 +12,7 @@ import { SortableContext, arrayMove, rectSortingStrategy } from "@dnd-kit/sortab
 import { createPortal } from "react-dom";
 import Sidebar from "./Sidebar";
 import ScanCard from "./ScanCard";
+import Sparkles from "./Sparkles";
 import { parseParkTiff } from "./tiff";
 import { reprocess, computeRms } from "./processing";
 import { toImageData, renderScanForExport, drawScaleBar } from "./colormap";
@@ -35,6 +36,7 @@ export default function App() {
   const [scans, setScans] = useState<ScanRecord[]>([]);
   const [opts, setOpts] = useState<ProcessingOptions>(DEFAULT_OPTS);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sparkles, setSparkles] = useState(false);
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -250,6 +252,8 @@ export default function App() {
         scans={scans}
         onGenerateFigure={generateFigure}
         generatingFigure={generatingFigure}
+        sparkles={sparkles}
+        onSparklesToggle={() => setSparkles(v => !v)}
       />
 
       <button className="sidebar-toggle" onClick={() => setSidebarOpen((v) => !v)}
@@ -348,6 +352,8 @@ export default function App() {
         </div>,
         document.body
       )}
+
+      <Sparkles enabled={sparkles} />
 
       <input ref={fileInputRef} type="file" multiple accept=".tiff,.tif" style={{ display: "none" }}
         onChange={(e) => { if (e.target.files) loadFiles(e.target.files); e.target.value = ""; }} />
