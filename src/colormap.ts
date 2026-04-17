@@ -109,9 +109,10 @@ export function drawScaleBar(
   ctx.lineTo(x2, yLine);
   ctx.stroke();
 
-  const label = barUm < 1 ? `${barUm * 1000} nm` : `${barUm} µm`;
+  // Use micro sign U+00B5 (upright) and Arial for clean SI-style rendering
+  const label = barUm < 1 ? `${barUm * 1000} nm` : `${barUm} \u00b5m`;
   ctx.fillStyle = "white";
-  ctx.font = `bold ${Math.round(canvasSize * 0.038)}px sans-serif`;
+  ctx.font = `normal bold ${Math.round(canvasSize * 0.038)}px Arial, "Helvetica Neue", sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
   ctx.fillText(label, (x1 + x2) / 2, textY);
