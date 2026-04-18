@@ -368,7 +368,6 @@ input[type="range"] {
 .canvas-row {
   display: flex;
   align-items: stretch;
-  background: #111;
 }
 .canvas-row .card-canvas-wrap {
   flex: 1 1 0;
@@ -380,15 +379,16 @@ input[type="range"] {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  width: 48px;
-  background: #111;
-  padding: 8px 5px 8px 5px;
+  width: 52px;
+  background: #fff;
+  border-left: 1px solid #e4e4e4;
+  padding: 8px 7px 8px 6px;
   gap: 3px;
 }
 .colorbar-unit {
   font-size: 8.5px;
   font-weight: 500;
-  color: #585858;
+  color: #aaa;
   letter-spacing: 0.3px;
   line-height: 1;
   padding-left: 1px;
@@ -397,7 +397,7 @@ input[type="range"] {
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 5px;
+  gap: 6px;
   align-items: stretch;
 }
 .colorbar-strip {
@@ -405,7 +405,7 @@ input[type="range"] {
   flex-shrink: 0;
   display: block;
   border-radius: 2px;
-  border: 0.5px solid rgba(255,255,255,0.07);
+  border: 1px solid #e8e8e8;
 }
 .colorbar-labels {
   flex: 1;
@@ -416,42 +416,42 @@ input[type="range"] {
 }
 .cb-label {
   font-size: 9px;
-  font-weight: 400;
-  color: #a8a8a8;
+  font-weight: 500;
+  color: #444;
   white-space: nowrap;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 .cb-label--mid {
-  color: #727272;
+  color: #999;
+  font-weight: 400;
 }
 
-/* ── expanded variant — clean floating widget ── */
+/* ── expanded variant — raised card widget ── */
 .colorbar-side--expanded {
-  width: 60px;
-  background: #fff;
+  width: 62px;
   border: 1px solid #e4e4e4;
   border-radius: 9px;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05), 0 4px 14px rgba(0,0,0,0.04);
   padding: 12px 10px;
   gap: 5px;
 }
 .colorbar-side--expanded .colorbar-unit {
-  color: #b0b0b0;
+  color: #b8b8b8;
   font-size: 9px;
 }
 .colorbar-side--expanded .colorbar-strip {
   width: 16px;
   border-radius: 3px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid #eaeaea;
 }
 .colorbar-side--expanded .cb-label {
   font-size: 10px;
-  color: #444;
+  color: #333;
   font-weight: 500;
 }
 .colorbar-side--expanded .cb-label--mid {
-  color: #888;
+  color: #999;
   font-weight: 400;
 }
 
@@ -471,6 +471,8 @@ input[type="range"] {
 /* Raw data canvas: pixelated so AFM pixels stay sharp at any display size */
 .data-canvas {
   width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
   display: block;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
