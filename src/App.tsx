@@ -312,6 +312,7 @@ export default function App() {
         generatingFigure={generatingFigure}
         sparkles={sparkles}
         onSparklesToggle={() => setSparkles(v => !v)}
+        isExpanded={!!expandedRecord}
       />
 
       <button className="sidebar-toggle" onClick={() => setSidebarOpen((v) => !v)}
@@ -443,6 +444,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
   const [copying, setCopying] = useState<Action | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [cursorH, setCursorH] = useState<{ cx: number; cy: number; v: number } | null>(null);
 
   let maxAbs = 0;
   for (let j = 0; j < record.z.length; j++) if (Math.abs(record.z[j]) > maxAbs) maxAbs = Math.abs(record.z[j]);
@@ -616,10 +618,29 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
       <div className="expanded-body">
         <div className="expanded-canvas-area">
           <div className="canvas-and-cb-group">
-            <div className="card-canvas-wrap expanded-canvas-wrap" style={{ position: "relative" }}>
+            <div
+              className="card-canvas-wrap expanded-canvas-wrap"
+              style={{ position: "relative" }}
+              onMouseMove={(e) => {
+                const canvas = dataCanvasRef.current;
+                if (!canvas) return;
+                const r = canvas.getBoundingClientRect();
+                const px = (e.clientX - r.left) / r.width;
+                const py = (e.clientY - r.top) / r.height;
+                const ix = Math.min(record.side - 1, Math.max(0, Math.floor(px * record.side)));
+                const iy = Math.min(record.side - 1, Math.max(0, Math.floor(py * record.side)));
+                setCursorH({ cx: e.clientX - r.left, cy: e.clientY - r.top, v: record.z[iy * record.side + ix] });
+              }}
+              onMouseLeave={() => setCursorH(null)}
+            >
               <canvas ref={dataCanvasRef} className="data-canvas" />
               <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
               <button className="canvas-rotate-btn" onClick={onRotate} title="Rotate 90° clockwise">↻</button>
+              {cursorH && (
+                <div className="cursor-readout" style={{ left: cursorH.cx, top: cursorH.cy }}>
+                  {fmt(cursorH.v)} nm
+                </div>
+              )}
             </div>
             <Colorbar vmin={-lim} vmax={lim} expanded />
           </div>

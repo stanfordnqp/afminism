@@ -2,7 +2,7 @@ import type { ProcessingOptions, ScanRecord } from "./types";
 
 interface Props {
   open: boolean;
-  onToggle: () => void;
+  onToggle: (_: void) => void;
   opts: ProcessingOptions;
   onChange: (patch: Partial<ProcessingOptions>) => void;
   scans: ScanRecord[];
@@ -10,9 +10,10 @@ interface Props {
   generatingFigure: boolean;
   sparkles: boolean;
   onSparklesToggle: () => void;
+  isExpanded: boolean;
 }
 
-export default function Sidebar({ open, onToggle: _onToggle, opts, onChange, scans, onGenerateFigure, generatingFigure, sparkles, onSparklesToggle }: Props) {
+export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure, generatingFigure, sparkles, onSparklesToggle, isExpanded }: Props) {
   const hasScans = scans.some((s) => !s.minimized);
 
   return (
@@ -46,13 +47,8 @@ export default function Sidebar({ open, onToggle: _onToggle, opts, onChange, sca
               onChange={(e) => onChange({ doLines: e.target.checked })} />
             <label htmlFor="doLines">Row leveling</label>
           </div>
-        </div>
 
-        <div className="sidebar-divider" />
-
-        {/* ── Display ── */}
-        <div className="sidebar-section">
-          <div className="sidebar-section-label">Display</div>
+          <div className="sidebar-divider" style={{ margin: "10px 0" }} />
 
           <div className="sidebar-row">
             <input type="checkbox" id="doClip" checked={opts.doClip}
@@ -63,12 +59,10 @@ export default function Sidebar({ open, onToggle: _onToggle, opts, onChange, sca
           {opts.doClip && (
             <div className="clim-block">
               <div className="clim-desc">Color range (σ) — out of range shown in red/blue</div>
-              {/* Full-width slider */}
               <input type="range" min={opts.climMin} max={opts.climMax} step={0.25}
                 value={opts.climSigma}
                 onChange={(e) => onChange({ climSigma: parseFloat(e.target.value) })}
                 style={{ width: "100%", marginBottom: 6 }} />
-              {/* Min / σ= / Max inputs in one row */}
               <div className="clim-inputs-row">
                 <div className="clim-input-group">
                   <span className="clim-label">Min</span>
@@ -97,41 +91,45 @@ export default function Sidebar({ open, onToggle: _onToggle, opts, onChange, sca
               </div>
             </div>
           )}
+        </div>
 
-          <div className="sidebar-divider" style={{ margin: "10px 0" }} />
-
-          {/* Columns: +/- increment */}
-          <div className="sidebar-row">
-            <span style={{ color: "#555", fontSize: 12 }}>Columns:</span>
-            <div className="col-stepper">
-              <button
-                className="col-step-btn"
-                onClick={() => onChange({ columns: Math.max(1, opts.columns - 1) })}
-                disabled={opts.columns <= 1}
-              >−</button>
-              <span className="col-step-val">{opts.columns}</span>
-              <button
-                className="col-step-btn"
-                onClick={() => onChange({ columns: opts.columns + 1 })}
-              >+</button>
+        {/* ── Grid-only controls ── */}
+        {!isExpanded && (
+          <>
+            <div className="sidebar-divider" />
+            <div className="sidebar-section">
+              <div className="sidebar-section-label">Grid</div>
+              <div className="sidebar-row">
+                <span style={{ color: "#555", fontSize: 12 }}>Columns:</span>
+                <div className="col-stepper">
+                  <button
+                    className="col-step-btn"
+                    onClick={() => onChange({ columns: Math.max(1, opts.columns - 1) })}
+                    disabled={opts.columns <= 1}
+                  >−</button>
+                  <span className="col-step-val">{opts.columns}</span>
+                  <button
+                    className="col-step-btn"
+                    onClick={() => onChange({ columns: opts.columns + 1 })}
+                  >+</button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div className="sidebar-divider" />
-
-        {/* ── Export ── */}
-        <div className="sidebar-section">
-          <div className="sidebar-section-label">Export</div>
-          <button
-            className="sidebar-btn primary"
-            onClick={onGenerateFigure}
-            disabled={!hasScans || generatingFigure}
-          >
-            <FigureIcon />
-            {generatingFigure ? "Generating…" : "Generate figure"}
-          </button>
-        </div>
+            <div className="sidebar-divider" />
+            <div className="sidebar-section">
+              <div className="sidebar-section-label">Export</div>
+              <button
+                className="sidebar-btn primary"
+                onClick={onGenerateFigure}
+                disabled={!hasScans || generatingFigure}
+              >
+                <FigureIcon />
+                {generatingFigure ? "Generating…" : "Generate figure"}
+              </button>
+            </div>
+          </>
+        )}
 
         <div className="sidebar-divider" />
 

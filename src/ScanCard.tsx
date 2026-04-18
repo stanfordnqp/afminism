@@ -24,6 +24,7 @@ export default function ScanCard({
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
   const [copying, setCopying] = useState<null | "scaled" | "raw">(null);
+  const [cursorH, setCursorH] = useState<{ cx: number; cy: number; v: number } | null>(null);
 
   const sortable = useSortable({ id: record.id, disabled: !!isOverlay });
   const style = isOverlay ? {} : {
@@ -144,11 +145,30 @@ export default function ScanCard({
         title={!record.minimized ? "Double-click to expand" : undefined}
       >
         <div className="canvas-row">
-          <div className="card-canvas-wrap" style={{ position: "relative" }}>
+          <div
+            className="card-canvas-wrap"
+            style={{ position: "relative" }}
+            onMouseMove={!record.minimized ? (e) => {
+              const canvas = dataCanvasRef.current;
+              if (!canvas) return;
+              const r = canvas.getBoundingClientRect();
+              const px = (e.clientX - r.left) / r.width;
+              const py = (e.clientY - r.top) / r.height;
+              const ix = Math.min(record.side - 1, Math.max(0, Math.floor(px * record.side)));
+              const iy = Math.min(record.side - 1, Math.max(0, Math.floor(py * record.side)));
+              setCursorH({ cx: e.clientX - r.left, cy: e.clientY - r.top, v: record.z[iy * record.side + ix] });
+            } : undefined}
+            onMouseLeave={() => setCursorH(null)}
+          >
             <canvas ref={dataCanvasRef} className="data-canvas" />
             <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
             {/* Rotate button — top-right of image */}
             <button className="canvas-rotate-btn" onClick={(e) => { e.stopPropagation(); onRotate(); }} title="Rotate 90°">↻</button>
+            {cursorH && !record.minimized && (
+              <div className="cursor-readout" style={{ left: cursorH.cx, top: cursorH.cy }}>
+                {fmt(cursorH.v)} nm
+              </div>
+            )}
             {/* Copy / download overlay — bottom of image on hover */}
             {!record.minimized && (
               <div className="card-img-actions">
