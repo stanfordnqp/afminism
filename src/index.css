@@ -133,6 +133,42 @@ input[type="range"] {
   font-weight: 600;
 }
 
+/* ── Sidebar info tooltip ───────────────────────────────────────────────── */
+.infotip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+}
+.infotip-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: default;
+  font-size: 11px;
+  color: #555;
+  opacity: 0.6;
+  line-height: 1;
+  user-select: none;
+}
+.infotip-btn:hover { opacity: 1; }
+.infotip-box {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 200;
+  background: #1a1a1a;
+  color: #ddd;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 7px 10px;
+  border-radius: 6px;
+  width: 210px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  pointer-events: none;
+}
+
 .sidebar-btn {
   display: flex;
   align-items: center;
@@ -291,7 +327,8 @@ input[type="range"] {
   pointer-events: none;
 }
 .scan-card.minimized .card-stats,
-.scan-card.minimized .card-filename { display: none; }
+.scan-card.minimized .card-filename,
+.scan-card.minimized .card-meta { display: none; }
 
 /* New-card sparkle glow animation */
 @keyframes new-card-glow {
@@ -488,10 +525,19 @@ input[type="range"] {
 .card-filename {
   font-size: 10px;
   color: #bbb;
+  padding: 0 10px 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-meta {
+  font-size: 9.5px;
+  color: #555;
   padding: 0 10px 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: 0.2px;
 }
 
 /* ── card image action overlay (copy/download, shown on hover) ── */

@@ -6,6 +6,7 @@ export interface ParkTiff {
   data: Float32Array; // height values in nm, row-major
   side: number;       // image is side×side pixels
   scanUm: [number, number]; // [x, y] scan size in µm
+  meta: string;       // human-readable source/instrument indicator
 }
 
 // Park/PSIA custom tag IDs
@@ -93,6 +94,8 @@ function parsePsia(
   // 236 double z_offset
   // 244 wchar[8] z_unit
   // ...
+  const sourceName = readUtf16Le(view, hdrOffset + 4,  32).trim();
+  const imageMode  = readUtf16Le(view, hdrOffset + 68,  8).trim();
   const xreal   = view.getFloat64(hdrOffset + 140, true);
   const yreal   = view.getFloat64(hdrOffset + 148, true);
   const dataGain  = view.getFloat64(hdrOffset + 220, true);
@@ -122,7 +125,10 @@ function parsePsia(
     ? [xreal, yreal]
     : parseScanSizeFromFilename(filename);
 
-  return { data: nm, side, scanUm };
+  const modeParts = [sourceName, imageMode].filter(Boolean);
+  const meta = "Park Systems" + (modeParts.length ? " · " + modeParts.join(" · ") : "");
+
+  return { data: nm, side, scanUm, meta };
 }
 
 // ── Generic float32/float64 TIFF fallback ───────────────────────────────────
@@ -209,7 +215,8 @@ function parseGenericFloatTiff(
   }
 
   const side = Math.round(Math.sqrt(nPixels));
-  return { data: nm, side, scanUm };
+  const meta = `Float${bps} TIFF`;
+  return { data: nm, side, scanUm, meta };
 }
 
 // ── IFD utilities ─────────────────────────────────────────────────────────────

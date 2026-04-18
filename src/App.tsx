@@ -57,14 +57,14 @@ export default function App() {
     fetch(`${base}example.tiff`)
       .then((r) => r.arrayBuffer())
       .then((buf) => {
-        const { data, side, scanUm } = parseParkTiff(buf, "example.tiff");
+        const { data, side, scanUm, meta } = parseParkTiff(buf, "example.tiff");
         const exampleOpts: ProcessingOptions = { ...DEFAULT_OPTS, doClip: true, climSigma: 2 };
         const z = reprocess(data, side, exampleOpts, 0);
         const { rms, rmsClipped, ptp } = computeRms(z, exampleOpts.climSigma);
         const record: ScanRecord = {
           id: uid(), filename: "example.tiff", label: "Example Scan",
           zRaw: data, side, scanUm, rotation: 0, minimized: false, isExample: true,
-          z, rms, rmsClipped, ptp,
+          z, rms, rmsClipped, ptp, meta,
         };
         setScans([record]);
       })
@@ -89,11 +89,11 @@ export default function App() {
   function buildRecord(
     id: string, filename: string, label: string,
     zRaw: Float32Array, side: number, scanUm: [number, number],
-    rotation: number, o: ProcessingOptions
+    rotation: number, o: ProcessingOptions, meta?: string
   ): ScanRecord {
     const z = reprocess(zRaw, side, o, rotation);
     const { rms, rmsClipped, ptp } = computeRms(z, o.climSigma);
-    return { id, filename, label, zRaw, side, scanUm, rotation, minimized: false, z, rms, rmsClipped, ptp };
+    return { id, filename, label, zRaw, side, scanUm, rotation, minimized: false, z, rms, rmsClipped, ptp, meta };
   }
 
   function applyOpts(prevScans: ScanRecord[], newOpts: ProcessingOptions): ScanRecord[] {
@@ -130,10 +130,10 @@ export default function App() {
     for (const file of toLoad) {
       try {
         const buf = await file.arrayBuffer();
-        const { data, side, scanUm } = parseParkTiff(buf, file.name);
+        const { data, side, scanUm, meta } = parseParkTiff(buf, file.name);
         const base = file.name.split("_")[0] ?? file.name.replace(/\.[^.]+$/, "");
         const label = base.charAt(0).toUpperCase() + base.slice(1);
-        newScans.push(buildRecord(uid(), file.name, label, data, side, scanUm, 0, opts));
+        newScans.push(buildRecord(uid(), file.name, label, data, side, scanUm, 0, opts, meta));
       } catch (e) {
         console.error(`Failed to load ${file.name}:`, e);
         alert(`Could not parse ${file.name}:\n${e}`);
@@ -257,9 +257,9 @@ export default function App() {
       ctx.textBaseline = "middle";
       ctx.fillText(r.label, x + cellW / 2, y + titleH / 2);
 
-      const parts = [`Rq = ${fmt(r.rms)} nm`];
+      const parts = [`${r.scanUm[0]}×${r.scanUm[1]} µm`, `Rq = ${fmt(r.rms)} nm`];
       if (opts.doClip) parts.push(`Rq* = ${fmt(r.rmsClipped)} nm`);
-      parts.push(`PtP = ${fmt(r.ptp)} nm`, `${r.scanUm[0]}×${r.scanUm[1]} µm`);
+      parts.push(`PtP = ${fmt(r.ptp)} nm`);
       ctx.fillStyle = "#555";
       ctx.font = "13px sans-serif";
       ctx.fillText(parts.join("   "), x + cellW / 2, y + titleH + scanSize + statsH / 2);
@@ -549,9 +549,9 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     drawColorbar(ctx, -lim, lim, colorbarW, scanSize, false);
     ctx.restore();
 
-    const parts = [`Rq = ${fmt(record.rms)} nm`];
+    const parts = [`${record.scanUm[0]}×${record.scanUm[1]} µm`, `Rq = ${fmt(record.rms)} nm`];
     if (opts.doClip) parts.push(`Rq* = ${fmt(record.rmsClipped)} nm`);
-    parts.push(`PtP = ${fmt(record.ptp)} nm`, `${record.scanUm[0]}×${record.scanUm[1]} µm`);
+    parts.push(`PtP = ${fmt(record.ptp)} nm`);
     ctx.fillStyle = "#555";
     ctx.font = "13px sans-serif";
     ctx.textAlign = "center";
@@ -670,6 +670,8 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
         </div>
         <div className="expanded-stats-panel">
           <div className="expanded-stats-title">Analysis</div>
+          <StatRow label="Scan" value={`${record.scanUm[0]}×${record.scanUm[1]} µm`}
+            info="Physical size of the scanned area in micrometres." />
           <StatRow label="Rq" value={`${fmt(record.rms)} nm`}
             info="RMS roughness — root-mean-square of height deviations from mean. Standard roughness metric." />
           {opts.doClip && (
@@ -678,10 +680,12 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
           )}
           <StatRow label="PtP" value={`${fmt(record.ptp)} nm`}
             info="Peak-to-peak height range — difference between the maximum and minimum height values in the image." />
-          <StatRow label="Scan" value={`${record.scanUm[0]}×${record.scanUm[1]} µm`}
-            info="Physical size of the scanned area in micrometres." />
           <StatRow label="Pixels" value={`${record.side}×${record.side}`}
             info="Raw pixel resolution of the AFM scan." />
+          {record.meta && (
+            <StatRow label="Source" value={record.meta}
+              info="Instrument and channel identified from the file metadata." />
+          )}
         </div>
       </div>
       {toast && <div className={`action-toast${toast.startsWith("Failed") ? " error" : ""}`}>{toast}</div>}

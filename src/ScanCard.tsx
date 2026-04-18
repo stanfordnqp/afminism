@@ -100,10 +100,10 @@ export default function ScanCard({
 
   const { rms, rmsClipped, ptp, scanUm } = record;
   const statsLine = [
+    `${scanUm[0]}×${scanUm[1]} µm`,
     `Rq = ${fmt(rms)} nm`,
     ...(opts.doClip ? [`Rq* = ${fmt(rmsClipped)} nm`] : []),
     `PtP = ${fmt(ptp)} nm`,
-    `${scanUm[0]}×${scanUm[1]} µm`,
   ].join("   ");
 
   const classes = [
@@ -193,6 +193,7 @@ export default function ScanCard({
           <>
             <div className="card-stats">{statsLine}</div>
             <div className="card-filename" title={record.filename}>{record.filename}</div>
+            {record.meta && <div className="card-meta">{record.meta}</div>}
           </>
         )}
       </div>
