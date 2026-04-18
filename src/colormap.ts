@@ -155,22 +155,49 @@ function fmt(n: number): string {
   return n.toFixed(decimals);
 }
 
-// Vertical colormap scale bar drawn to the right of a scan image.
-// dark=true for on-screen (dark bg), dark=false for export (white bg).
+// Draw just the afmhot gradient strip — used by the Colorbar React component.
+export function drawColormapStrip(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  if (w <= 0 || h <= 0) return;
+  const imgData = ctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    const t = 1 - y / Math.max(1, h - 1);
+    const idx = Math.round(t * 255);
+    const r = AFMHOT_LUT[idx * 3], g = AFMHOT_LUT[idx * 3 + 1], b = AFMHOT_LUT[idx * 3 + 2];
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      imgData.data[i] = r; imgData.data[i + 1] = g; imgData.data[i + 2] = b; imgData.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+// Canvas-only colorbar for figure exports (light/white background).
 export function drawColorbar(
   ctx: CanvasRenderingContext2D,
   vmin: number,
   vmax: number,
   totalW: number,
   totalH: number,
-  dark = true
+  _dark = false
 ): void {
-  const stripW = 14;
-  const padV = Math.round(totalH * 0.07);
-  const stripH = Math.max(20, totalH - 2 * padV);
-  const stripX = 5;
-  const stripY = Math.round((totalH - stripH) / 2);
+  const stripW = 18;
+  const labelH = 14;    // space for "nm" unit above strip
+  const padV = 6;       // padding below strip
+  const padH = 8;
+  const stripH = Math.max(40, totalH - labelH - padV);
+  const stripX = padH;
+  const stripY = labelH;
 
+  // "nm" unit label
+  ctx.font = "9px Arial, sans-serif";
+  ctx.fillStyle = "#999";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText("nm", stripX, labelH / 2);
+
+  // gradient strip
+  drawColormapStrip(ctx, stripW, stripH);  // draws at (0,0) then we need to put it at (stripX,stripY)
+  // ↑ can't translate putImageData; redraw inline
   const imgData = ctx.createImageData(stripW, stripH);
   for (let y = 0; y < stripH; y++) {
     const t = 1 - y / Math.max(1, stripH - 1);
@@ -183,36 +210,21 @@ export function drawColorbar(
   }
   ctx.putImageData(imgData, stripX, stripY);
 
-  ctx.strokeStyle = dark ? "rgba(255,255,255,0.25)" : "#bbb";
+  ctx.strokeStyle = "#ccc";
   ctx.lineWidth = 0.5;
   ctx.strokeRect(stripX + 0.5, stripY + 0.5, stripW - 1, stripH - 1);
 
-  const tickX = stripX + stripW;
-  ctx.strokeStyle = dark ? "rgba(255,255,255,0.4)" : "#888";
-  ctx.lineWidth = 0.5;
-  for (const frac of [0, 0.5, 1]) {
-    const y = stripY + frac * (stripH - 1) + 0.5;
-    ctx.beginPath(); ctx.moveTo(tickX, y); ctx.lineTo(tickX + 4, y); ctx.stroke();
-  }
-
-  const textX = tickX + 6;
-  const fontSize = Math.max(8, Math.round(Math.min(totalH * 0.065, 11)));
-  ctx.font = `${fontSize}px Arial, sans-serif`;
-  ctx.fillStyle = dark ? "#ccc" : "#444";
+  const textX = stripX + stripW + 5;
+  ctx.font = "10px Arial, sans-serif";
+  ctx.fillStyle = "#555";
   ctx.textAlign = "left";
   const mid = (vmin + vmax) / 2;
   ctx.textBaseline = "top";    ctx.fillText(fmtCbVal(vmax), textX, stripY);
   ctx.textBaseline = "middle"; ctx.fillText(fmtCbVal(mid),  textX, stripY + stripH / 2);
   ctx.textBaseline = "bottom"; ctx.fillText(fmtCbVal(vmin), textX, stripY + stripH);
-
-  ctx.font = `${Math.max(7, fontSize - 1)}px Arial, sans-serif`;
-  ctx.fillStyle = dark ? "#777" : "#999";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "bottom";
-  ctx.fillText("nm", stripX + stripW / 2, stripY - 1);
 }
 
-function fmtCbVal(v: number): string {
+export function fmtCbVal(v: number): string {
   const abs = Math.abs(v);
   if (abs < 0.005) return "0";
   const sign = v > 0 ? "+" : "";

@@ -17,6 +17,7 @@ import RainbowTrail from "./RainbowTrail";
 import { parseParkTiff } from "./tiff";
 import { reprocess, computeRms } from "./processing";
 import { toImageData, renderScanForExport, drawScaleBar, drawColorbar } from "./colormap";
+import Colorbar from "./Colorbar";
 import type { ScanRecord, ProcessingOptions } from "./types";
 
 const DEFAULT_OPTS: ProcessingOptions = {
@@ -438,7 +439,6 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
 }) {
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
-  const colorbarCanvasRef = useRef<HTMLCanvasElement>(null);
   type Action = "copy-data" | "copy-figure" | "dl-data" | "dl-figure";
   const [copying, setCopying] = useState<Action | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -480,32 +480,6 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     draw();
     return () => obs.disconnect();
   }, [record.scanUm]);
-
-  useEffect(() => {
-    const dataCanvas = dataCanvasRef.current;
-    const cbCanvas = colorbarCanvasRef.current;
-    if (!dataCanvas || !cbCanvas) return;
-    function redraw() {
-      if (!dataCanvas || !cbCanvas) return;
-      const dpr = window.devicePixelRatio || 1;
-      const h = dataCanvas.clientHeight;
-      const w = cbCanvas.clientWidth;
-      if (!h || !w) return;
-      cbCanvas.style.height = h + "px";
-      cbCanvas.width = Math.round(w * dpr);
-      cbCanvas.height = Math.round(h * dpr);
-      const ctx = cbCanvas.getContext("2d")!;
-      ctx.clearRect(0, 0, cbCanvas.width, cbCanvas.height);
-      ctx.save();
-      ctx.scale(dpr, dpr);
-      drawColorbar(ctx, -lim, lim, w, h);
-      ctx.restore();
-    }
-    const obs = new ResizeObserver(redraw);
-    obs.observe(dataCanvas);
-    redraw();
-    return () => obs.disconnect();
-  }, [lim]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -641,13 +615,14 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
       </div>
       <div className="expanded-body">
         <div className="expanded-canvas-area">
-          <div className="card-canvas-wrap expanded-canvas-wrap" style={{ position: "relative" }}>
-            <canvas ref={dataCanvasRef} className="data-canvas" />
-            <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
-            {/* Rotate button — top-right corner of the image */}
-            <button className="canvas-rotate-btn" onClick={onRotate} title="Rotate 90° clockwise">↻</button>
+          <div className="canvas-and-cb-group">
+            <div className="card-canvas-wrap expanded-canvas-wrap" style={{ position: "relative" }}>
+              <canvas ref={dataCanvasRef} className="data-canvas" />
+              <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
+              <button className="canvas-rotate-btn" onClick={onRotate} title="Rotate 90° clockwise">↻</button>
+            </div>
+            <Colorbar vmin={-lim} vmax={lim} expanded />
           </div>
-          <canvas ref={colorbarCanvasRef} className="colorbar-side-canvas colorbar-expanded" />
         </div>
         <div className="expanded-stats-panel">
           <div className="expanded-stats-title">Analysis</div>
