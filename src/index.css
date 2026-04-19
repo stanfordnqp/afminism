@@ -255,6 +255,18 @@ input[type="range"] {
   text-align: center;
 }
 
+/* ── poly order toast ── */
+.poly-toast {
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #856404;
+  line-height: 1.4;
+}
+
 /* ── toggle sidebar button — lives in root flex row, always visible ── */
 .sidebar-toggle {
   position: fixed;
