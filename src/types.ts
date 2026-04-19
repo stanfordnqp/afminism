@@ -2,8 +2,9 @@ import type { ColormapName } from "./colormap";
 export type { ColormapName };
 
 export interface ProcessingOptions {
-  doPlane: boolean;
-  planeSigma: number;
+  doPoly: boolean;
+  polyOrder: number;
+  polySigma: number;
   doLines: boolean;
   doClip: boolean;
   climSigma: number;

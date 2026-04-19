@@ -22,8 +22,9 @@ import Colorbar from "./Colorbar";
 import type { ScanRecord, ProcessingOptions } from "./types";
 
 const DEFAULT_OPTS: ProcessingOptions = {
-  doPlane: true,
-  planeSigma: 6,
+  doPoly: true,
+  polyOrder: 1,
+  polySigma: 6,
   doLines: true,
   doClip: true,
   climSigma: 5,
@@ -218,7 +219,7 @@ export default function App() {
     const cellH = scanSize + titleH + statsH;
 
     const procParts: string[] = [];
-    if (opts.doPlane) procParts.push(`Plane leveling (σ = ${opts.planeSigma})`);
+    if (opts.doPoly) procParts.push(`Poly leveling order ${opts.polyOrder} (σ = ${opts.polySigma})`);
     if (opts.doLines) procParts.push("Row leveling");
     if (opts.doClip) procParts.push(`Color range ±${opts.climSigma}σ`);
     const procText = procParts.join("  ·  ");
@@ -529,7 +530,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     const colorbarGap = 8;
 
     const procParts: string[] = [];
-    if (opts.doPlane) procParts.push(`Plane leveling (σ = ${opts.planeSigma})`);
+    if (opts.doPoly) procParts.push(`Poly leveling order ${opts.polyOrder} (σ = ${opts.polySigma})`);
     if (opts.doLines) procParts.push("Row leveling");
     if (opts.doClip) procParts.push(`Color range ±${opts.climSigma}σ`);
     const procText = procParts.join("  ·  ");

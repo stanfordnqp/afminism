@@ -86,20 +86,35 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
           <div className="sidebar-section-label">Processing</div>
 
           <div className="sidebar-row">
-            <input type="checkbox" id="doPlane" checked={opts.doPlane}
-              onChange={(e) => onChange({ doPlane: e.target.checked })} />
-            <label htmlFor="doPlane">Plane leveling</label>
-            <InfoTip text="Fits a tilted plane to the image and subtracts it. Removes large-scale tilt from the sample or scanner." />
+            <input type="checkbox" id="doPoly" checked={opts.doPoly}
+              onChange={(e) => onChange({ doPoly: e.target.checked })} />
+            <label htmlFor="doPoly">Polynomial leveling</label>
+            <InfoTip text="Fits a polynomial surface to the image and subtracts it. Order 0 = mean, 1 = plane (tilt), 2 = paraboloid (bowl/saddle)." />
           </div>
-          {opts.doPlane && (
-            <div className="sidebar-row" style={{ paddingLeft: 20 }}>
-              <label htmlFor="planeSigma" style={{ color: "#666", fontSize: 11 }}>σ clip:</label>
-              <input type="number" id="planeSigma" min={1} max={20} step={0.5}
-                value={opts.planeSigma}
-                onChange={(e) => onChange({ planeSigma: parseFloat(e.target.value) || 6 })}
-                style={{ width: 54 }} />
-              <InfoTip text="Sigma threshold for outlier rejection during plane fit. Pixels further than this many standard deviations from the fitted plane are excluded from the fit. Lower = more aggressive rejection." />
-            </div>
+          {opts.doPoly && (
+            <>
+              <div className="sidebar-row" style={{ paddingLeft: 20 }}>
+                <span style={{ color: "#666", fontSize: 11 }}>Order:</span>
+                <InfoTip text="Polynomial order: 0 subtracts the mean, 1 removes tilt (plane), 2 removes bowl and saddle shapes." />
+                <div className="col-stepper">
+                  <button className="col-step-btn"
+                    onClick={() => onChange({ polyOrder: Math.max(0, opts.polyOrder - 1) })}
+                    disabled={opts.polyOrder <= 0}>−</button>
+                  <span className="col-step-val">{opts.polyOrder}</span>
+                  <button className="col-step-btn"
+                    onClick={() => onChange({ polyOrder: Math.min(2, opts.polyOrder + 1) })}
+                    disabled={opts.polyOrder >= 2}>+</button>
+                </div>
+              </div>
+              <div className="sidebar-row" style={{ paddingLeft: 20 }}>
+                <label htmlFor="polySigma" style={{ color: "#666", fontSize: 11 }}>σ clip:</label>
+                <input type="number" id="polySigma" min={1} max={20} step={0.5}
+                  value={opts.polySigma}
+                  onChange={(e) => onChange({ polySigma: parseFloat(e.target.value) || 6 })}
+                  style={{ width: 54 }} />
+                <InfoTip text="Sigma threshold for outlier rejection during polynomial fit. Pixels further than this many standard deviations from the fit are excluded and the surface is refit. Lower = more aggressive rejection." />
+              </div>
+            </>
           )}
 
           <div className="sidebar-row">
