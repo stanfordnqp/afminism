@@ -255,18 +255,6 @@ input[type="range"] {
   text-align: center;
 }
 
-/* ── poly order toast ── */
-.poly-toast {
-  margin-top: 6px;
-  padding: 6px 10px;
-  background: #fff3cd;
-  border: 1px solid #ffc107;
-  border-radius: 6px;
-  font-size: 11px;
-  color: #856404;
-  line-height: 1.4;
-}
-
 /* ── toggle sidebar button — lives in root flex row, always visible ── */
 .sidebar-toggle {
   position: fixed;
@@ -443,14 +431,19 @@ input[type="range"] {
 .icon-btn:hover { background: #f0f0f0; color: #333; }
 .icon-btn.danger:hover { background: #fee2e2; color: #dc2626; }
 
-/* ── canvas + colorbar row (grid card) ── */
+/* ── canvas + colorbar row ── */
+/* flex-start keeps canvas-wrap at its natural square height;
+   colorbar uses align-self:stretch to fill exactly that height. */
 .canvas-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  align-items: flex-start;
 }
 .canvas-row .card-canvas-wrap {
+  flex: 1 1 0;
   min-width: 0;
-  aspect-ratio: 1 / 1;
+}
+.canvas-row .colorbar-side {
+  align-self: stretch;
 }
 
 /* ── colorbar component ── */
@@ -542,15 +535,11 @@ input[type="range"] {
 /* Raw data canvas: pixelated so AFM pixels stay sharp at any display size */
 .data-canvas {
   width: 100%;
-  height: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
   display: block;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-}
-/* Minimized preview: keep canvas square so overflow:hidden crops cleanly */
-.scan-card.minimized .data-canvas {
-  height: auto;
-  aspect-ratio: 1 / 1;
 }
 /* Scale bar overlay canvas: HiDPI, drawn at display resolution */
 .scalebar-canvas {

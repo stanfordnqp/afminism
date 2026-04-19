@@ -75,19 +75,10 @@ const MAX_POLY_ORDER = 5;
 
 export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure, generatingFigure, sparkles, onSparklesToggle, isExpanded }: Props) {
   const hasScans = scans.some((s) => !s.minimized);
-  const [polyToast, setPolyToast] = useState(false);
-  const polyToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   function bumpPolyOrder() {
     const cur = isNaN(opts.polyOrder) ? 1 : (opts.polyOrder ?? 1);
     if (cur >= MAX_POLY_ORDER) return;
-    const next = cur + 1;
-    onChange({ polyOrder: next });
-    if (next === MAX_POLY_ORDER) {
-      if (polyToastTimer.current) clearTimeout(polyToastTimer.current);
-      setPolyToast(true);
-      polyToastTimer.current = setTimeout(() => setPolyToast(false), 3000);
-    }
+    onChange({ polyOrder: cur + 1 });
   }
 
   return (
@@ -117,12 +108,10 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
                     disabled={(opts.polyOrder || 0) <= 0}>−</button>
                   <span className="col-step-val">{isNaN(opts.polyOrder) ? 1 : (opts.polyOrder ?? 1)}</span>
                   <button className="col-step-btn" onClick={bumpPolyOrder}
-                    disabled={(isNaN(opts.polyOrder) ? 1 : (opts.polyOrder ?? 1)) >= MAX_POLY_ORDER}>+</button>
+                    disabled={(isNaN(opts.polyOrder) ? 1 : (opts.polyOrder ?? 1)) >= MAX_POLY_ORDER}
+                    title={(isNaN(opts.polyOrder) ? 1 : (opts.polyOrder ?? 1)) >= MAX_POLY_ORDER ? "slow down buddy that's too much" : undefined}>+</button>
                 </div>
                 <InfoTip text="Polynomial order: 0 = mean, 1 = plane (tilt), 2 = paraboloid, 3+ = higher-order surface. Higher orders remove more complex background shapes." />
-                {polyToast && (
-                  <div className="poly-toast">hold up that's too high what are you doing!</div>
-                )}
               </div>
               <div className="sidebar-row" style={{ paddingLeft: 20 }}>
                 <label htmlFor="polySigma" style={{ color: "#666", fontSize: 11 }}>σ clip:</label>
