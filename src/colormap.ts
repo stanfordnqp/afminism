@@ -113,10 +113,10 @@ export function drawScaleBar(
   const x2 = canvasSize - marginX;
   const yLine = canvasSize - marginY;
 
-  const padX = canvasSize * 0.03;
-  const padAbove = canvasSize * 0.05;
-  const padBelow = canvasSize * 0.02;
-  const textY = yLine - canvasSize * 0.015;
+  const padX = canvasSize * 0.025;
+  const padAbove = canvasSize * 0.045;
+  const padBelow = canvasSize * 0.015;
+  const textY = yLine - canvasSize * 0.012;
   const boxTop = textY - padAbove;
   const boxH = yLine + padBelow - boxTop;
 
@@ -136,7 +136,7 @@ export function drawScaleBar(
 
   const label = barUm < 1 ? `${barUm * 1000} nm` : `${barUm} \u00b5m`;
   ctx.fillStyle = "white";
-  ctx.font = `normal bold ${Math.round(canvasSize * 0.038)}px Arial, "Helvetica Neue", sans-serif`;
+  ctx.font = `normal bold ${Math.round(canvasSize * 0.03)}px Arial, "Helvetica Neue", sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
   ctx.fillText(label, (x1 + x2) / 2, textY);
