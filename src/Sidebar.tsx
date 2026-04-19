@@ -111,7 +111,6 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
             <>
               <div className="sidebar-row" style={{ paddingLeft: 20 }}>
                 <span style={{ color: "#666", fontSize: 11 }}>Order:</span>
-                <InfoTip text="Polynomial order: 0 = mean, 1 = plane (tilt), 2 = paraboloid, 3+ = higher-order surface. Higher orders remove more complex background shapes." />
                 <div className="col-stepper">
                   <button className="col-step-btn"
                     onClick={() => onChange({ polyOrder: Math.max(0, (opts.polyOrder || 1) - 1) })}
@@ -120,6 +119,7 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
                   <button className="col-step-btn" onClick={bumpPolyOrder}
                     disabled={(isNaN(opts.polyOrder) ? 1 : (opts.polyOrder ?? 1)) >= MAX_POLY_ORDER}>+</button>
                 </div>
+                <InfoTip text="Polynomial order: 0 = mean, 1 = plane (tilt), 2 = paraboloid, 3+ = higher-order surface. Higher orders remove more complex background shapes." />
                 {polyToast && (
                   <div className="poly-toast">hold up that's too high what are you doing!</div>
                 )}
