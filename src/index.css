@@ -440,6 +440,10 @@ input[type="range"] {
   min-width: 0;
   aspect-ratio: 1 / 1;
 }
+.canvas-row .colorbar-side {
+  height: 100%;
+  box-sizing: border-box;
+}
 
 /* ── colorbar component ── */
 .colorbar-side {
