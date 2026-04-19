@@ -463,7 +463,8 @@ input[type="range"] {
   color: #aaa;
   letter-spacing: 0.3px;
   line-height: 1;
-  padding-left: 1px;
+  width: 14px;
+  text-align: center;
 }
 .colorbar-body {
   flex: 1;
@@ -510,6 +511,7 @@ input[type="range"] {
 .colorbar-side--expanded .colorbar-unit {
   color: #b8b8b8;
   font-size: 9px;
+  width: 16px;
 }
 .colorbar-side--expanded .colorbar-strip {
   width: 16px;
