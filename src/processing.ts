@@ -31,14 +31,16 @@ function solveLinear(A: number[][], b: number[]): number[] {
   return aug.map((row, i) => Math.abs(aug[i][i]) < 1e-30 ? 0 : row[n] / aug[i][i]);
 }
 
-// Basis vectors for polynomial orders:
-//   0 → [1]
-//   1 → [x, y, 1]
-//   2 → [x², xy, y², x, y, 1]
+// All monomials x^i * y^j with i+j <= order, highest degree first.
+// Number of terms = (order+1)(order+2)/2.
 function polyBasis(x: number, y: number, order: number): number[] {
-  if (order === 0) return [1];
-  if (order === 1) return [x, y, 1];
-  return [x * x, x * y, y * y, x, y, 1];
+  const terms: number[] = [];
+  for (let deg = order; deg >= 0; deg--) {
+    for (let i = deg; i >= 0; i--) {
+      terms.push(Math.pow(x, i) * Math.pow(y, deg - i));
+    }
+  }
+  return terms;
 }
 
 export function fitPoly(
@@ -59,7 +61,7 @@ export function fitPoly(
     }
   }
 
-  const p = order === 0 ? 1 : order === 1 ? 3 : 6;
+  const p = (order + 1) * (order + 2) / 2;
   let mask = new Uint8Array(n).fill(1);
   let coeffs = new Array(p).fill(0);
 

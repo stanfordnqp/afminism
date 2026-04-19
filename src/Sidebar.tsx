@@ -95,15 +95,14 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
             <>
               <div className="sidebar-row" style={{ paddingLeft: 20 }}>
                 <span style={{ color: "#666", fontSize: 11 }}>Order:</span>
-                <InfoTip text="Polynomial order: 0 subtracts the mean, 1 removes tilt (plane), 2 removes bowl and saddle shapes." />
+                <InfoTip text="Polynomial order: 0 = mean, 1 = plane (tilt), 2 = paraboloid, 3+ = higher-order surface. Higher orders remove more complex background shapes." />
                 <div className="col-stepper">
                   <button className="col-step-btn"
-                    onClick={() => onChange({ polyOrder: Math.max(0, opts.polyOrder - 1) })}
-                    disabled={opts.polyOrder <= 0}>−</button>
-                  <span className="col-step-val">{opts.polyOrder}</span>
+                    onClick={() => onChange({ polyOrder: Math.max(0, (opts.polyOrder || 1) - 1) })}
+                    disabled={(opts.polyOrder || 0) <= 0}>−</button>
+                  <span className="col-step-val">{isNaN(opts.polyOrder) ? 1 : (opts.polyOrder ?? 1)}</span>
                   <button className="col-step-btn"
-                    onClick={() => onChange({ polyOrder: Math.min(2, opts.polyOrder + 1) })}
-                    disabled={opts.polyOrder >= 2}>+</button>
+                    onClick={() => onChange({ polyOrder: (isNaN(opts.polyOrder) ? 1 : opts.polyOrder) + 1 })}>+</button>
                 </div>
               </div>
               <div className="sidebar-row" style={{ paddingLeft: 20 }}>

@@ -24,7 +24,7 @@ import type { ScanRecord, ProcessingOptions } from "./types";
 const DEFAULT_OPTS: ProcessingOptions = {
   doPoly: true,
   polyOrder: 1,
-  polySigma: 6,
+  polySigma: 5,
   doLines: true,
   doClip: true,
   climSigma: 5,
