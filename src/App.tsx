@@ -689,8 +689,14 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
         </div>
         <div className="expanded-stats-panel">
           <div className="expanded-stats-title">Analysis</div>
+          {record.meta && (
+            <StatRow label="Source" value={record.meta}
+              info="Instrument and channel identified from the file metadata." />
+          )}
           <StatRow label="Scan" value={`${record.scanUm[0]}×${record.scanUm[1]} µm`}
             info="Physical size of the scanned area in micrometres." />
+          <StatRow label="Pixels" value={`${record.side}×${record.side}`}
+            info="Raw pixel resolution of the AFM scan." />
           <StatRow label="Rq" value={`${fmt(record.rms)} nm`}
             info="RMS roughness — root-mean-square of height deviations from mean. Standard roughness metric." />
           {opts.doClip && (
@@ -699,12 +705,6 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
           )}
           <StatRow label="PtP" value={`${fmt(record.ptp)} nm`}
             info="Peak-to-peak height range — difference between the maximum and minimum height values in the image." />
-          <StatRow label="Pixels" value={`${record.side}×${record.side}`}
-            info="Raw pixel resolution of the AFM scan." />
-          {record.meta && (
-            <StatRow label="Source" value={record.meta}
-              info="Instrument and channel identified from the file metadata." />
-          )}
         </div>
       </div>
       {toast && <div className={`action-toast${toast.startsWith("Failed") ? " error" : ""}`}>{toast}</div>}
