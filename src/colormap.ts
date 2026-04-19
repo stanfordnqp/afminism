@@ -55,7 +55,7 @@ const LUTS: Record<ColormapName, Uint8Array> = {
 export const COLORMAP_LABELS: Record<ColormapName, string> = {
   gray:      "Gray",
   viridis:   "Viridis",
-  afmhot:   "Inferno",
+  afmhot:   "AFM Hot",
   diverging: "Diverging",
 };
 
