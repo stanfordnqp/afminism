@@ -45,7 +45,7 @@ export default function ScanCard({
     if (!canvas) return;
     canvas.width = record.side;
     canvas.height = record.side;
-    const img = toImageData(record.z, record.side, -lim, lim, opts.doClip);
+    const img = toImageData(record.z, record.side, -lim, lim, opts.doClip, opts.colormap);
     canvas.getContext("2d")!.putImageData(img, 0, 0);
   }, [record.z, record.side, lim, opts.doClip]);
 
@@ -83,10 +83,10 @@ export default function ScanCard({
   async function doCopy(data: boolean) {
     setCopying(data ? "raw" : "scaled");
     try {
-      const cvs = data ? dataCanvasRef.current! : renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, Math.max(record.side, 800));
+      const cvs = data ? dataCanvasRef.current! : renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, Math.max(record.side, 800), opts.colormap);
       await navigator.clipboard.write([new ClipboardItem({ "image/png": await canvasToBlob(cvs) })]);
     } catch {
-      const cvs = data ? dataCanvasRef.current! : renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, Math.max(record.side, 800));
+      const cvs = data ? dataCanvasRef.current! : renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, Math.max(record.side, 800), opts.colormap);
       download(cvs.toDataURL("image/png"), `${record.label}${data ? "_data" : "_figure"}.png`);
     } finally {
       setCopying(null);
@@ -94,7 +94,7 @@ export default function ScanCard({
   }
 
   function doDownload(data: boolean) {
-    const cvs = data ? dataCanvasRef.current! : renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, Math.max(record.side, 800));
+    const cvs = data ? dataCanvasRef.current! : renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, Math.max(record.side, 800), opts.colormap);
     download(cvs.toDataURL("image/png"), `${record.label}${data ? "_data" : "_figure"}.png`);
   }
 
@@ -187,7 +187,7 @@ export default function ScanCard({
               </div>
             )}
           </div>
-          {!record.minimized && <Colorbar vmin={-lim} vmax={lim} />}
+          {!record.minimized && <Colorbar vmin={-lim} vmax={lim} colormap={opts.colormap} />}
         </div>
         {!record.minimized && (
           <>

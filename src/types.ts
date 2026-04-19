@@ -1,3 +1,6 @@
+import type { ColormapName } from "./colormap";
+export type { ColormapName };
+
 export interface ProcessingOptions {
   doPlane: boolean;
   planeSigma: number;
@@ -7,6 +10,7 @@ export interface ProcessingOptions {
   climMin: number; // slider range min
   climMax: number; // slider range max
   columns: number;
+  colormap: ColormapName;
 }
 
 export interface ScanRecord {

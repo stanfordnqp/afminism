@@ -30,6 +30,7 @@ const DEFAULT_OPTS: ProcessingOptions = {
   climMin: 0.5,
   climMax: 20,
   columns: 2,
+  colormap: "afmhot" as const,
 };
 
 let idCounter = 0;
@@ -243,12 +244,12 @@ export default function App() {
       for (let j = 0; j < r.z.length; j++) if (Math.abs(r.z[j]) > maxAbs) maxAbs = Math.abs(r.z[j]);
       const lim = opts.doClip ? opts.climSigma * r.rmsClipped : maxAbs || 1;
 
-      const scanCanvas = renderScanForExport(r.z, r.side, r.scanUm, -lim, lim, opts.doClip, scanSize);
+      const scanCanvas = renderScanForExport(r.z, r.side, r.scanUm, -lim, lim, opts.doClip, scanSize, opts.colormap);
       ctx.drawImage(scanCanvas, x, y + titleH);
 
       ctx.save();
       ctx.translate(x + scanSize + colorbarGap, y + titleH);
-      drawColorbar(ctx, -lim, lim, colorbarW, scanSize, false);
+      drawColorbar(ctx, -lim, lim, colorbarW, scanSize, false, opts.colormap);
       ctx.restore();
 
       ctx.fillStyle = "#111";
@@ -485,7 +486,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     if (!canvas) return;
     canvas.width = record.side;
     canvas.height = record.side;
-    const img = toImageData(record.z, record.side, -lim, lim, opts.doClip);
+    const img = toImageData(record.z, record.side, -lim, lim, opts.doClip, opts.colormap);
     canvas.getContext("2d")!.putImageData(img, 0, 0);
   }, [record.z, record.side, lim, opts.doClip]);
 
@@ -548,12 +549,12 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     ctx.textBaseline = "middle";
     ctx.fillText(record.label, W / 2, pad + titleH / 2);
 
-    const scanCvs = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, scanSize);
+    const scanCvs = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, scanSize, opts.colormap);
     ctx.drawImage(scanCvs, pad, pad + titleH);
 
     ctx.save();
     ctx.translate(pad + scanSize + colorbarGap, pad + titleH);
-    drawColorbar(ctx, -lim, lim, colorbarW, scanSize, false);
+    drawColorbar(ctx, -lim, lim, colorbarW, scanSize, false, opts.colormap);
     ctx.restore();
 
     const parts = [`${record.scanUm[0]}×${record.scanUm[1]} µm`, `Rq = ${fmt(record.rms)} nm`];
@@ -678,7 +679,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
                 </div>
               )}
             </div>
-            <Colorbar vmin={-lim} vmax={lim} expanded />
+            <Colorbar vmin={-lim} vmax={lim} expanded colormap={opts.colormap} />
           </div>
         </div>
         <div className="expanded-stats-panel">

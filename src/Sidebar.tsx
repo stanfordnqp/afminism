@@ -1,6 +1,29 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { drawColormapStripH, COLORMAP_LABELS } from "./colormap";
+import type { ColormapName } from "./colormap";
 import type { ProcessingOptions, ScanRecord } from "./types";
+
+function ColormapSwatch({ name, selected, onClick }: { name: ColormapName; selected: boolean; onClick: () => void }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    c.width = c.offsetWidth || 64;
+    c.height = c.offsetHeight || 14;
+    drawColormapStripH(c.getContext("2d")!, c.width, c.height, name);
+  }, [name]);
+  return (
+    <button
+      className={`cmap-swatch${selected ? " cmap-swatch--active" : ""}`}
+      onClick={onClick}
+      title={COLORMAP_LABELS[name]}
+    >
+      <canvas ref={ref} className="cmap-canvas" />
+      <span className="cmap-label">{COLORMAP_LABELS[name]}</span>
+    </button>
+  );
+}
 
 function InfoTip({ text }: { text: string }) {
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -55,7 +78,7 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
     <div className={`sidebar${open ? "" : " collapsed"}`}>
       <div className="sidebar-inner">
         <div className="sidebar-header">
-          <span className="sidebar-title">afminism</span>
+          <span className="sidebar-title">afminism💫</span>
         </div>
 
         {/* ── Processing ── */}
@@ -130,6 +153,17 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
               </div>
             </div>
           )}
+        </div>
+
+        {/* ── Colormap ── */}
+        <div className="sidebar-divider" />
+        <div className="sidebar-section">
+          <div className="sidebar-section-label">Colormap</div>
+          <div className="cmap-grid">
+            {(["afmhot", "gray", "viridis", "plasma"] as ColormapName[]).map((cm) => (
+              <ColormapSwatch key={cm} name={cm} selected={opts.colormap === cm} onClick={() => onChange({ colormap: cm })} />
+            ))}
+          </div>
         </div>
 
         {/* ── Grid-only controls ── */}

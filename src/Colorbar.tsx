@@ -1,13 +1,15 @@
 import { useEffect, useRef } from "react";
 import { drawColormapStrip, fmtCbVal } from "./colormap";
+import type { ColormapName } from "./colormap";
 
 interface Props {
   vmin: number;
   vmax: number;
   expanded?: boolean;
+  colormap?: ColormapName;
 }
 
-export default function Colorbar({ vmin, vmax, expanded = false }: Props) {
+export default function Colorbar({ vmin, vmax, expanded = false, colormap = "afmhot" }: Props) {
   const stripRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -21,13 +23,13 @@ export default function Colorbar({ vmin, vmax, expanded = false }: Props) {
       if (!h || !w) return;
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
-      drawColormapStrip(canvas.getContext("2d")!, canvas.width, canvas.height);
+      drawColormapStrip(canvas.getContext("2d")!, canvas.width, canvas.height, colormap);
     }
     const obs = new ResizeObserver(draw);
     obs.observe(canvas);
     draw();
     return () => obs.disconnect();
-  }, []);
+  }, [colormap]);
 
   const mid = (vmin + vmax) / 2;
   const cls = expanded ? "colorbar-side colorbar-side--expanded" : "colorbar-side";

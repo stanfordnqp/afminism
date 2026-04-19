@@ -1,66 +1,92 @@
-// afmhot colormap — precomputed 256-entry LUT from matplotlib.
-// Generated with: import matplotlib.pyplot as plt; c = plt.get_cmap('afmhot')(np.linspace(0,1,256))
+// Colormaps — 4 options, each a 256×3 Uint8Array LUT.
 
-const AFMHOT_LUT: Uint8Array = (() => {
-  // Each row: [R, G, B] as 0-255
-  const raw: number[] = [
-    0,0,0, 8,0,0, 16,0,0, 24,0,0, 32,0,0, 41,0,0, 49,0,0, 57,0,0,
-    65,0,0, 74,0,0, 82,0,0, 90,0,0, 98,0,0, 107,0,0, 115,0,0, 123,0,0,
-    131,0,0, 139,0,0, 148,0,0, 156,0,0, 164,0,0, 172,0,0, 180,0,0, 189,0,0,
-    197,0,0, 205,0,0, 213,0,0, 222,0,0, 230,0,0, 238,0,0, 246,0,0, 255,0,0,
-    255,8,0, 255,16,0, 255,24,0, 255,33,0, 255,41,0, 255,49,0, 255,57,0, 255,65,0,
-    255,74,0, 255,82,0, 255,90,0, 255,98,0, 255,107,0, 255,115,0, 255,123,0, 255,131,0,
-    255,139,0, 255,148,0, 255,156,0, 255,164,0, 255,172,0, 255,180,0, 255,189,0, 255,197,0,
-    255,205,0, 255,213,0, 255,222,0, 255,230,0, 255,238,0, 255,246,0, 255,255,0, 255,255,8,
-    255,255,16, 255,255,24, 255,255,33, 255,255,41, 255,255,49, 255,255,57, 255,255,65, 255,255,74,
-    255,255,82, 255,255,90, 255,255,98, 255,255,107, 255,255,115, 255,255,123, 255,255,131, 255,255,139,
-    255,255,148, 255,255,156, 255,255,164, 255,255,172, 255,255,180, 255,255,189, 255,255,197, 255,255,205,
-    255,255,213, 255,255,222, 255,255,230, 255,255,238, 255,255,246, 255,255,255,
-    // pad remaining 162 entries to white (will not be reached with 94-entry afmhot)
-    ...Array(162 * 3).fill(255),
-  ];
-  // afmhot actually covers 0→black→red→yellow→white across full range
-  // Re-derive properly: matplotlib afmhot is piecewise linear
+export type ColormapName = "afmhot" | "gray" | "viridis" | "plasma";
+
+// Piecewise-linear interpolation between control points to build a 256-entry LUT.
+function makeLut(stops: [number, number, number, number][]): Uint8Array {
   const lut = new Uint8Array(256 * 3);
   for (let i = 0; i < 256; i++) {
     const t = i / 255;
-    // R: 0→1 over [0, 0.5], stays 1 over [0.5, 1]
-    const r = Math.min(1, t * 2);
-    // G: 0→1 over [0.25, 0.75]
-    const g = Math.min(1, Math.max(0, (t - 0.25) * 2));
-    // B: 0→1 over [0.5, 1]
-    const b = Math.min(1, Math.max(0, (t - 0.5) * 2));
-    lut[i * 3 + 0] = Math.round(r * 255);
-    lut[i * 3 + 1] = Math.round(g * 255);
-    lut[i * 3 + 2] = Math.round(b * 255);
+    let s = 0;
+    while (s < stops.length - 2 && t > stops[s + 1][0]) s++;
+    const [t0, r0, g0, b0] = stops[s];
+    const [t1, r1, g1, b1] = stops[s + 1];
+    const u = t1 === t0 ? 0 : (t - t0) / (t1 - t0);
+    lut[i * 3 + 0] = Math.round(r0 + u * (r1 - r0));
+    lut[i * 3 + 1] = Math.round(g0 + u * (g1 - g0));
+    lut[i * 3 + 2] = Math.round(b0 + u * (b1 - b0));
   }
   return lut;
-})();
+}
+
+const LUTS: Record<ColormapName, Uint8Array> = {
+  afmhot: makeLut([
+    [0,     0,   0,   0],
+    [0.5,  255,   0,   0],
+    [0.75, 255, 255,   0],
+    [1,    255, 255, 255],
+  ]),
+  gray: makeLut([
+    [0, 0, 0, 0],
+    [1, 255, 255, 255],
+  ]),
+  viridis: makeLut([
+    [0,     68,   1,  84],
+    [0.125, 72,  33, 115],
+    [0.25,  59,  82, 139],
+    [0.375, 44, 113, 142],
+    [0.5,   33, 145, 140],
+    [0.625, 53, 183, 121],
+    [0.75,  94, 201,  98],
+    [0.875,175, 220,  57],
+    [1,    253, 231,  37],
+  ]),
+  plasma: makeLut([
+    [0,      13,   8, 135],
+    [0.125,  84,   2, 163],
+    [0.25,  126,   3, 168],
+    [0.375, 166,  40, 152],
+    [0.5,   204,  71, 120],
+    [0.625, 229, 107,  93],
+    [0.75,  248, 149,  64],
+    [0.875, 253, 195,  40],
+    [1,     240, 249,  33],
+  ]),
+};
+
+export const COLORMAP_LABELS: Record<ColormapName, string> = {
+  afmhot: "AFM Hot",
+  gray:   "Gray",
+  viridis:"Viridis",
+  plasma: "Plasma",
+};
+
+function lut(cm: ColormapName = "afmhot"): Uint8Array {
+  return LUTS[cm];
+}
 
 export function toImageData(
   z: Float32Array,
   side: number,
   vmin: number,
   vmax: number,
-  clip: boolean
+  clip: boolean,
+  colormap: ColormapName = "afmhot"
 ): ImageData {
+  const L = lut(colormap);
   const pixels = new Uint8ClampedArray(side * side * 4);
   const range = vmax - vmin || 1;
   for (let i = 0; i < side * side; i++) {
     const v = z[i];
     let r: number, g: number, b: number;
     if (clip && v < vmin) {
-      // under: blue
       r = 0; g = 0; b = 220;
     } else if (clip && v > vmax) {
-      // over: red
       r = 220; g = 0; b = 0;
     } else {
       const t = Math.max(0, Math.min(1, (v - vmin) / range));
       const idx = Math.round(t * 255);
-      r = AFMHOT_LUT[idx * 3];
-      g = AFMHOT_LUT[idx * 3 + 1];
-      b = AFMHOT_LUT[idx * 3 + 2];
+      r = L[idx * 3]; g = L[idx * 3 + 1]; b = L[idx * 3 + 2];
     }
     pixels[i * 4 + 0] = r;
     pixels[i * 4 + 1] = g;
@@ -68,36 +94,6 @@ export function toImageData(
     pixels[i * 4 + 3] = 255;
   }
   return new ImageData(pixels, side, side);
-}
-
-// "Example" badge drawn in the top-left of a scan canvas.
-export function drawExampleBadge(
-  ctx: CanvasRenderingContext2D,
-  canvasSize: number
-): void {
-  const fontSize = Math.round(canvasSize * 0.055);
-  ctx.font = `bold ${fontSize}px Arial, "Helvetica Neue", sans-serif`;
-  ctx.textBaseline = "top";
-  ctx.textAlign = "left";
-
-  const text = "Example";
-  const metrics = ctx.measureText(text);
-  const padX = canvasSize * 0.025;
-  const padY = canvasSize * 0.022;
-  const margin = canvasSize * 0.03;
-  const boxW = metrics.width + padX * 2;
-  const boxH = fontSize + padY * 2;
-  const x = margin;
-  const y = margin;
-
-  const r = 4;
-  ctx.fillStyle = "rgba(0,0,0,0.52)";
-  ctx.beginPath();
-  ctx.roundRect(x, y, boxW, boxH, r);
-  ctx.fill();
-
-  ctx.fillStyle = "white";
-  ctx.fillText(text, x + padX, y + padY);
 }
 
 export function drawScaleBar(
@@ -126,9 +122,8 @@ export function drawScaleBar(
 
   ctx.save();
   ctx.fillStyle = "rgba(0,0,0,0.5)";
-  const r = 4;
   ctx.beginPath();
-  ctx.roundRect(x1 - padX, boxTop, barPx + 2 * padX, boxH, r);
+  ctx.roundRect(x1 - padX, boxTop, barPx + 2 * padX, boxH, 4);
   ctx.fill();
 
   ctx.strokeStyle = "white";
@@ -139,7 +134,6 @@ export function drawScaleBar(
   ctx.lineTo(x2, yLine);
   ctx.stroke();
 
-  // Use micro sign U+00B5 (upright) and Arial for clean SI-style rendering
   const label = barUm < 1 ? `${barUm * 1000} nm` : `${barUm} \u00b5m`;
   ctx.fillStyle = "white";
   ctx.font = `normal bold ${Math.round(canvasSize * 0.038)}px Arial, "Helvetica Neue", sans-serif`;
@@ -149,8 +143,6 @@ export function drawScaleBar(
   ctx.restore();
 }
 
-// Render a scan to an offscreen canvas at a given pixel size (for export/copy).
-// The scale bar is drawn at the export resolution — always sharp.
 export function renderScanForExport(
   z: Float32Array,
   side: number,
@@ -158,19 +150,16 @@ export function renderScanForExport(
   vmin: number,
   vmax: number,
   doClip: boolean,
-  exportSize: number
+  exportSize: number,
+  colormap: ColormapName = "afmhot"
 ): HTMLCanvasElement {
-  const img = toImageData(z, side, vmin, vmax, doClip);
-
-  // Draw raw data at native res, then scale up
+  const img = toImageData(z, side, vmin, vmax, doClip, colormap);
   const src = document.createElement("canvas");
-  src.width = side;
-  src.height = side;
+  src.width = side; src.height = side;
   src.getContext("2d")!.putImageData(img, 0, 0);
 
   const out = document.createElement("canvas");
-  out.width = exportSize;
-  out.height = exportSize;
+  out.width = exportSize; out.height = exportSize;
   const ctx = out.getContext("2d")!;
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(src, 0, 0, exportSize, exportSize);
@@ -178,22 +167,41 @@ export function renderScanForExport(
   return out;
 }
 
-function fmt(n: number): string {
-  if (n === 0) return "0";
-  const mag = Math.floor(Math.log10(Math.abs(n)));
-  const decimals = Math.max(0, 2 - mag);
-  return n.toFixed(decimals);
-}
-
-// Draw just the afmhot gradient strip — used by the Colorbar React component.
-export function drawColormapStrip(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+// Draw gradient strip into a canvas context at (0,0) — vertical, top=high, bottom=low.
+export function drawColormapStrip(
+  ctx: CanvasRenderingContext2D,
+  w: number, h: number,
+  colormap: ColormapName = "afmhot"
+): void {
   if (w <= 0 || h <= 0) return;
+  const L = lut(colormap);
   const imgData = ctx.createImageData(w, h);
   for (let y = 0; y < h; y++) {
     const t = 1 - y / Math.max(1, h - 1);
     const idx = Math.round(t * 255);
-    const r = AFMHOT_LUT[idx * 3], g = AFMHOT_LUT[idx * 3 + 1], b = AFMHOT_LUT[idx * 3 + 2];
+    const r = L[idx * 3], g = L[idx * 3 + 1], b = L[idx * 3 + 2];
     for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      imgData.data[i] = r; imgData.data[i + 1] = g; imgData.data[i + 2] = b; imgData.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+// Horizontal gradient strip — used by the sidebar swatch picker.
+export function drawColormapStripH(
+  ctx: CanvasRenderingContext2D,
+  w: number, h: number,
+  colormap: ColormapName = "afmhot"
+): void {
+  if (w <= 0 || h <= 0) return;
+  const L = lut(colormap);
+  const imgData = ctx.createImageData(w, h);
+  for (let x = 0; x < w; x++) {
+    const t = x / Math.max(1, w - 1);
+    const idx = Math.round(t * 255);
+    const r = L[idx * 3], g = L[idx * 3 + 1], b = L[idx * 3 + 2];
+    for (let y = 0; y < h; y++) {
       const i = (y * w + x) * 4;
       imgData.data[i] = r; imgData.data[i + 1] = g; imgData.data[i + 2] = b; imgData.data[i + 3] = 255;
     }
@@ -208,28 +216,26 @@ export function drawColorbar(
   vmax: number,
   totalW: number,
   totalH: number,
-  _dark = false
+  _dark = false,
+  colormap: ColormapName = "afmhot"
 ): void {
   const stripW = 18;
-  const labelH = 14;    // space for "nm" unit above strip
-  const padV = 6;       // padding below strip
+  const labelH = 14;
+  const padV = 6;
   const padH = 8;
   const stripH = Math.max(40, totalH - labelH - padV);
   const stripX = padH;
   const stripY = labelH;
 
-  // "nm" unit label
   ctx.font = "9px Arial, sans-serif";
   ctx.fillStyle = "#999";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillText("nm", stripX, labelH / 2);
 
-  // gradient strip — use an offscreen canvas + drawImage so the current
-  // transform is respected (putImageData ignores transforms)
   const tmp = document.createElement("canvas");
   tmp.width = stripW; tmp.height = stripH;
-  drawColormapStrip(tmp.getContext("2d")!, stripW, stripH);
+  drawColormapStrip(tmp.getContext("2d")!, stripW, stripH, colormap);
   ctx.drawImage(tmp, stripX, stripY);
 
   ctx.strokeStyle = "#ccc";
