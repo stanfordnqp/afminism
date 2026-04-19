@@ -207,7 +207,7 @@ export default function App() {
     const rows = Math.ceil(visible.length / cols);
     const scanSize = 700;
     const titleH = 36;
-    const statsH = 30;
+    const statsH = 46;
     const gap = 20;
     const padding = 24;
     const colorbarW = 62;
@@ -260,9 +260,16 @@ export default function App() {
       const parts = [`${r.scanUm[0]}×${r.scanUm[1]} µm`, `Rq = ${fmt(r.rms)} nm`];
       if (opts.doClip) parts.push(`Rq* = ${fmt(r.rmsClipped)} nm`);
       parts.push(`PtP = ${fmt(r.ptp)} nm`);
-      ctx.fillStyle = "#555";
+      const statsBaseY = y + titleH + scanSize;
+      ctx.fillStyle = "#444";
       ctx.font = "13px sans-serif";
-      ctx.fillText(parts.join("   "), x + cellW / 2, y + titleH + scanSize + statsH / 2);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(parts.join("   "), x + cellW / 2, statsBaseY + 7);
+      const fileMeta = r.filename + (r.meta ? " · " + r.meta : "");
+      ctx.fillStyle = "#aaa";
+      ctx.font = "10px Arial, sans-serif";
+      ctx.fillText(fileMeta, x + cellW / 2, statsBaseY + 26);
     });
 
     // footer
@@ -515,7 +522,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
   function buildFigureCanvas(): HTMLCanvasElement {
     const scanSize = 700;
     const titleH = 40;
-    const statsH = 32;
+    const statsH = 46;
     const pad = 20;
     const colorbarW = 62;
     const colorbarGap = 8;
@@ -552,10 +559,16 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     const parts = [`${record.scanUm[0]}×${record.scanUm[1]} µm`, `Rq = ${fmt(record.rms)} nm`];
     if (opts.doClip) parts.push(`Rq* = ${fmt(record.rmsClipped)} nm`);
     parts.push(`PtP = ${fmt(record.ptp)} nm`);
-    ctx.fillStyle = "#555";
+    const statsBaseY = pad + titleH + scanSize;
+    ctx.fillStyle = "#444";
     ctx.font = "13px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(parts.join("   "), W / 2, pad + titleH + scanSize + statsH / 2);
+    ctx.textBaseline = "top";
+    ctx.fillText(parts.join("   "), W / 2, statsBaseY + 7);
+    const fileMeta = record.filename + (record.meta ? " · " + record.meta : "");
+    ctx.fillStyle = "#aaa";
+    ctx.font = "10px Arial, sans-serif";
+    ctx.fillText(fileMeta, W / 2, statsBaseY + 26);
 
     const footerY = H - footerH;
     ctx.strokeStyle = "#e0e0e0";
