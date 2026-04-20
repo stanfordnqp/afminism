@@ -518,6 +518,7 @@ input[type="range"] {
 
 .card-body { padding: 0; }
 .card-canvas-wrap {
+  cursor: crosshair;
   position: relative;
   line-height: 0;
   background: #111;
@@ -799,6 +800,7 @@ input[type="range"] {
   overflow: hidden;
 }
 .expanded-canvas-wrap {
+  cursor: crosshair;
   /* Height-based square: clamp by viewport height AND available width */
   height: min(
     calc(100vh - 110px),
