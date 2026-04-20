@@ -4,6 +4,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { ScanRecord, ProcessingOptions } from "./types";
 import { toImageData, renderScanForExport, drawScaleBar } from "./colormap";
 import Colorbar from "./Colorbar";
+import PsdPlot from "./PsdPlot";
 
 interface Props {
   record: ScanRecord;
@@ -15,10 +16,11 @@ interface Props {
   isNew?: boolean;
   /** When true the card is rendered inside the dnd overlay — no sortable hooks needed */
   isOverlay?: boolean;
+  showPsd?: boolean;
 }
 
 export default function ScanCard({
-  record, opts, onRemove, onLabelChange, onRotate, onExpand, isNew, isOverlay,
+  record, opts, onRemove, onLabelChange, onRotate, onExpand, isNew, isOverlay, showPsd,
 }: Props) {
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -175,6 +177,11 @@ export default function ScanCard({
         <div className="card-filename" title={record.filename}>
           {record.filename}{record.meta && <span className="card-meta-inline"> · {record.meta}</span>}
         </div>
+        {showPsd && (
+          <div className="psd-panel">
+            <PsdPlot freqs={record.psd.freqs} power={record.psd.power} color="#2196f3" showAxes />
+          </div>
+        )}
       </div>
     </div>
   );

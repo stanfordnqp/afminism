@@ -1,5 +1,6 @@
 import type { ScanRecord, ProcessingOptions } from "./types";
 import { reprocess, computeRms } from "./processing";
+import { computePSD } from "./psd";
 
 export const WORKER_URL = "https://afminism-share.apateonas.workers.dev";
 
@@ -120,7 +121,8 @@ export async function deserializeSession(
   const jsonLen = view.getUint32(4, false);
   const dec = new TextDecoder();
   const json = dec.decode(raw.slice(8, 8 + jsonLen));
-  const { opts, scans: scanMetas } = JSON.parse(json) as SessionMeta;
+  const { opts: rawOpts, scans: scanMetas } = JSON.parse(json) as SessionMeta;
+  const opts: ProcessingOptions = { ...rawOpts, showPsd: rawOpts.showPsd ?? false };
 
   const floatBase = 8 + jsonLen;
   const scans: ScanRecord[] = scanMetas.map((sm) => {
@@ -130,11 +132,12 @@ export async function deserializeSession(
     ));
     const z = reprocess(zRaw, sm.side, opts, sm.rotation);
     const { rms, rmsClipped, ptp } = computeRms(z, opts.climSigma);
+    const psd = computePSD(z, sm.side, sm.scanUm);
     return {
       id: sm.id, filename: sm.filename, label: sm.label,
       side: sm.side, scanUm: sm.scanUm, rotation: sm.rotation,
       meta: sm.meta, isExample: sm.isExample,
-      zRaw, z, rms, rmsClipped, ptp,
+      zRaw, z, rms, rmsClipped, ptp, psd,
     };
   });
 

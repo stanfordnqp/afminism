@@ -794,17 +794,35 @@ input[type="range"] {
   min-height: 0;
   min-width: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+  flex-direction: row;
+  align-items: stretch;
+  padding: 16px 12px;
+  gap: 12px;
   overflow: hidden;
+}
+.expanded-psd-panel {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+  border-left: 1px solid #eee;
+  padding-left: 12px;
+}
+.expanded-psd-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 .expanded-canvas-wrap {
   cursor: crosshair;
-  /* Height-based square: clamp by viewport height AND available width */
+  /* Height-based square: clamp by viewport height AND available width (account for 240px PSD panel) */
   height: min(
     calc(100vh - 110px),
-    calc(100vw - var(--sidebar-w, 260px) - 340px)
+    calc(100vw - var(--sidebar-w, 260px) - 580px)
   );
   width: auto;
   aspect-ratio: 1 / 1;
@@ -818,8 +836,11 @@ input[type="range"] {
 
 /* ── expanded canvas + colorbar group ── */
 .canvas-and-cb-group {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  justify-content: center;
   gap: 14px;
 }
 
@@ -1115,4 +1136,73 @@ input[type="range"] {
 }
 .toggle-switch input:checked + .toggle-track .toggle-thumb {
   transform: translateX(16px);
+}
+
+/* ── PSD panel (below scan card) ── */
+.psd-panel {
+  width: 100%;
+  height: 160px;
+  border-top: 1px solid #eee;
+  background: #fafafa;
+}
+
+/* ── View mode tab bar ── */
+.view-tab-bar {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px 0;
+}
+.view-tab {
+  padding: 4px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid #ddd;
+  border-radius: 6px 6px 0 0;
+  background: #f5f5f5;
+  color: #666;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.view-tab:hover { background: #eee; color: #333; }
+.view-tab.active {
+  background: #fff;
+  color: #222;
+  border-bottom-color: #fff;
+  font-weight: 600;
+}
+
+/* ── PSD Summary view ── */
+.psd-summary-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px 16px;
+  min-height: 0;
+}
+.psd-summary-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 10px;
+}
+.psd-summary-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+.psd-summary-plot {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+.psd-summary-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #aaa;
+  font-size: 14px;
 }

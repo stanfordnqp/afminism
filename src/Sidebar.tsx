@@ -190,6 +190,18 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
           </div>
         </div>
 
+        {/* ── Analysis ── */}
+        <div className="sidebar-divider" />
+        <div className="sidebar-section">
+          <div className="sidebar-section-label">Analysis</div>
+          <div className="sidebar-row">
+            <input type="checkbox" id="showPsd" checked={opts.showPsd}
+              onChange={(e) => onChange({ showPsd: e.target.checked })} />
+            <label htmlFor="showPsd">Show PSD</label>
+            <InfoTip text="Displays the 1D radially-averaged Power Spectral Density below each scan card. Log-log plot: x = spatial frequency (1/µm), y = PSD (nm²·µm²)." />
+          </div>
+        </div>
+
         {/* ── Grid-only controls ── */}
         {!isExpanded && (
           <>

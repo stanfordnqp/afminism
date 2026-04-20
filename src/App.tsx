@@ -17,8 +17,11 @@ import RainbowTrail from "./RainbowTrail";
 import FeedbackButton from "./FeedbackButton";
 import { parseParkTiff } from "./tiff";
 import { reprocess, computeRms } from "./processing";
+import { computePSD } from "./psd";
 import { toImageData, renderScanForExport, drawScaleBar, drawColorbar } from "./colormap";
 import Colorbar from "./Colorbar";
+import PsdPlot, { drawPsd } from "./PsdPlot";
+import PsdSummaryView from "./PsdSummaryView";
 import type { ScanRecord, ProcessingOptions } from "./types";
 import { uploadSession, downloadSession } from "./share";
 
@@ -33,6 +36,7 @@ const DEFAULT_OPTS: ProcessingOptions = {
   climMax: 20,
   columns: 2,
   colormap: "afmhot" as const,
+  showPsd: false,
 };
 
 let idCounter = 0;
@@ -51,6 +55,7 @@ export default function App() {
   const [figureBlob, setFigureBlob] = useState<Blob | null>(null);
   const [generatingFigure, setGeneratingFigure] = useState(false);
   const [sharingState, setSharingState] = useState<"idle" | "uploading" | "copied" | "error" | "full">("idle");
+  const [viewMode, setViewMode] = useState<"grid" | "psd">("grid");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -82,10 +87,11 @@ export default function App() {
         const exampleOpts: ProcessingOptions = { ...DEFAULT_OPTS, doClip: true, climSigma: 2 };
         const z = reprocess(data, side, exampleOpts, 0);
         const { rms, rmsClipped, ptp } = computeRms(z, exampleOpts.climSigma);
+        const psd = computePSD(z, side, scanUm);
         const record: ScanRecord = {
           id: uid(), filename: "example.tiff", label: "Example Scan",
           zRaw: data, side, scanUm, rotation: 0, isExample: true,
-          z, rms, rmsClipped, ptp, meta,
+          z, rms, rmsClipped, ptp, psd, meta,
         };
         setScans([record]);
       })
@@ -133,14 +139,16 @@ export default function App() {
   ): ScanRecord {
     const z = reprocess(zRaw, side, o, rotation);
     const { rms, rmsClipped, ptp } = computeRms(z, o.climSigma);
-    return { id, filename, label, zRaw, side, scanUm, rotation, z, rms, rmsClipped, ptp, meta };
+    const psd = computePSD(z, side, scanUm);
+    return { id, filename, label, zRaw, side, scanUm, rotation, z, rms, rmsClipped, ptp, psd, meta };
   }
 
   function applyOpts(prevScans: ScanRecord[], newOpts: ProcessingOptions): ScanRecord[] {
     return prevScans.map((s) => {
       const z = reprocess(s.zRaw, s.side, newOpts, s.rotation);
       const { rms, rmsClipped, ptp } = computeRms(z, newOpts.climSigma);
-      return { ...s, z, rms, rmsClipped, ptp };
+      const psd = computePSD(z, s.side, s.scanUm);
+      return { ...s, z, rms, rmsClipped, ptp, psd };
     });
   }
 
@@ -209,7 +217,8 @@ export default function App() {
       const rotation = (r.rotation + 90) % 360;
       const z = reprocess(r.zRaw, r.side, opts, rotation);
       const { rms, rmsClipped, ptp } = computeRms(z, opts.climSigma);
-      return { ...r, rotation, z, rms, rmsClipped, ptp };
+      const psd = computePSD(z, r.side, r.scanUm);
+      return { ...r, rotation, z, rms, rmsClipped, ptp, psd };
     }));
   }
 
@@ -244,9 +253,10 @@ export default function App() {
     const padding = 24;
     const colorbarW = 62;
     const colorbarGap = 8;
+    const psdH = opts.showPsd ? 200 : 0;
 
     const cellW = scanSize + colorbarGap + colorbarW;
-    const cellH = scanSize + titleH + statsH;
+    const cellH = scanSize + titleH + statsH + psdH;
 
     const procParts: string[] = [];
     if (opts.doPoly) procParts.push(`Poly leveling order ${opts.polyOrder} (σ = ${opts.polySigma})`);
@@ -304,6 +314,14 @@ export default function App() {
       ctx.fillStyle = "#aaa";
       ctx.font = "10px Arial, sans-serif";
       ctx.fillText(fileMeta, x + cellW / 2, statsBaseY + 26);
+
+      if (opts.showPsd && r.psd) {
+        const psdY = statsBaseY + statsH;
+        ctx.save();
+        ctx.translate(x, psdY);
+        drawPsd(ctx, cellW, psdH, [{ freqs: r.psd.freqs, power: r.psd.power, color: "#2196f3", label: r.label }], true);
+        ctx.restore();
+      }
     });
 
     // footer
@@ -396,45 +414,64 @@ export default function App() {
             onLabelChange={(l) => labelCard(expandedRecord.id, l)}
           />
         ) : (
-          <div
-            className={`drop-zone${dragOver ? " drag-over" : ""}`}
-            onDragEnter={onDragEnter}
-            onDragLeave={onDragLeave}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-          >
-            {scans.length === 0 && (
-              <div className="empty-hint">
-                <DropIcon />
-                <p>Drop Park Systems TIFF files here</p>
-                <small>or click to browse</small>
-                <button className="add-files-btn-empty" onClick={() => fileInputRef.current?.click()}>
-                  Browse files
-                </button>
+          <>
+            {/* View mode tab bar */}
+            {scans.length > 0 && (
+              <div className="view-tab-bar">
+                <button
+                  className={`view-tab${viewMode === "grid" ? " active" : ""}`}
+                  onClick={() => setViewMode("grid")}
+                >Grid</button>
+                <button
+                  className={`view-tab${viewMode === "psd" ? " active" : ""}`}
+                  onClick={() => setViewMode("psd")}
+                >PSD</button>
               </div>
             )}
 
-            {scans.length > 0 && (
-              <>
-                <SortableContext items={scans.map((s) => s.id)} strategy={rectSortingStrategy}>
-                  <div className="card-grid" style={{ "--cols": opts.columns } as React.CSSProperties}>
-                    {scans.map((r) => (
-                      <ScanCard
-                        key={r.id}
-                        record={r}
-                        opts={opts}
-                        onRemove={() => removeCard(r.id)}
-                        onLabelChange={(l) => labelCard(r.id, l)}
-                        onRotate={() => rotateCard(r.id)}
-                        onExpand={() => setExpandedId(r.id)}
-                        isNew={newIds.has(r.id)}
-                      />
-                    ))}
+            {viewMode === "psd" ? (
+              <PsdSummaryView scans={scans} />
+            ) : (
+              <div
+                className={`drop-zone${dragOver ? " drag-over" : ""}`}
+                onDragEnter={onDragEnter}
+                onDragLeave={onDragLeave}
+                onDragOver={onDragOver}
+                onDrop={onDrop}
+              >
+                {scans.length === 0 && (
+                  <div className="empty-hint">
+                    <DropIcon />
+                    <p>Drop Park Systems TIFF files here</p>
+                    <small>or click to browse</small>
+                    <button className="add-files-btn-empty" onClick={() => fileInputRef.current?.click()}>
+                      Browse files
+                    </button>
                   </div>
-                </SortableContext>
-              </>
+                )}
+
+                {scans.length > 0 && (
+                  <SortableContext items={scans.map((s) => s.id)} strategy={rectSortingStrategy}>
+                    <div className="card-grid" style={{ "--cols": opts.columns } as React.CSSProperties}>
+                      {scans.map((r) => (
+                        <ScanCard
+                          key={r.id}
+                          record={r}
+                          opts={opts}
+                          onRemove={() => removeCard(r.id)}
+                          onLabelChange={(l) => labelCard(r.id, l)}
+                          onRotate={() => rotateCard(r.id)}
+                          onExpand={() => setExpandedId(r.id)}
+                          isNew={newIds.has(r.id)}
+                          showPsd={opts.showPsd}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
       </main>
 
@@ -848,6 +885,11 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
               )}
             </div>
             <Colorbar vmin={-lim} vmax={lim} expanded colormap={opts.colormap} />
+          </div>
+          {/* PSD panel to the right */}
+          <div className="expanded-psd-panel">
+            <div className="expanded-psd-label">Power Spectral Density</div>
+            <PsdPlot freqs={record.psd.freqs} power={record.psd.power} color="#2196f3" showAxes />
           </div>
         </div>
         <div className="expanded-stats-panel">
