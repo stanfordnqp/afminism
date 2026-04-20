@@ -24,6 +24,7 @@ import PsdPlot, { drawPsd } from "./PsdPlot";
 import PsdSummaryView from "./PsdSummaryView";
 import type { ScanRecord, ProcessingOptions } from "./types";
 import { uploadSession, downloadSession } from "./share";
+import { loadTestScans } from "./test_loader";
 
 const DEFAULT_OPTS: ProcessingOptions = {
   doPoly: true,
@@ -447,6 +448,24 @@ export default function App() {
                     <button className="add-files-btn-empty" onClick={() => fileInputRef.current?.click()}>
                       Browse files
                     </button>
+                    {import.meta.env.DEV && (
+                      <button
+                        className="add-files-btn-empty dev-load-btn"
+                        onClick={async () => {
+                          try {
+                            const results = await loadTestScans();
+                            const newScans = results.map(({ data, side, scanUm, filename, label }) =>
+                              buildRecord(uid(), filename, label, data, side, scanUm, 0, opts)
+                            );
+                            setScans(newScans);
+                          } catch (e) {
+                            console.error("Failed to load test scans:", e);
+                          }
+                        }}
+                      >
+                        Load test scans (dev)
+                      </button>
+                    )}
                   </div>
                 )}
 
