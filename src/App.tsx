@@ -20,6 +20,7 @@ import { reprocess, computeRms } from "./processing";
 import { toImageData, renderScanForExport, drawScaleBar, drawColorbar } from "./colormap";
 import Colorbar from "./Colorbar";
 import type { ScanRecord, ProcessingOptions } from "./types";
+import { uploadSession, downloadSession } from "./share";
 
 const DEFAULT_OPTS: ProcessingOptions = {
   doPoly: true,
@@ -49,12 +50,30 @@ export default function App() {
   const [figureUrl, setFigureUrl] = useState<string | null>(null);
   const [figureBlob, setFigureBlob] = useState<Blob | null>(null);
   const [generatingFigure, setGeneratingFigure] = useState(false);
+  const [sharingState, setSharingState] = useState<"idle" | "uploading" | "copied" | "error">("idle");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  // ── load example scan on first mount ─────────────────────────────────────
+  // ── load from shared link or example scan on first mount ─────────────────
   useEffect(() => {
+    const hash = window.location.hash;
+    const shareMatch = hash.match(/^#share\/([a-zA-Z0-9_-]+)$/);
+    if (shareMatch) {
+      const id = shareMatch[1];
+      window.history.replaceState(null, "", window.location.pathname);
+      downloadSession(id)
+        .then(({ scans, opts }) => {
+          setScans(scans);
+          setOpts(opts);
+        })
+        .catch((e) => {
+          console.error("Failed to load shared session:", e);
+          alert("Could not load shared session. The link may have expired.");
+        });
+      return;
+    }
+
     const base = import.meta.env.BASE_URL ?? "/";
     fetch(`${base}example.tiff`)
       .then((r) => r.arrayBuffer())
@@ -73,6 +92,23 @@ export default function App() {
       .catch((e) => console.warn("Could not load example scan:", e));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── share session ─────────────────────────────────────────────────────────
+  async function shareSession() {
+    if (!scans.length) return;
+    setSharingState("uploading");
+    try {
+      const id = await uploadSession(scans, opts);
+      const url = `${window.location.origin}${window.location.pathname}#share/${id}`;
+      await navigator.clipboard.writeText(url);
+      setSharingState("copied");
+      setTimeout(() => setSharingState("idle"), 2500);
+    } catch (e) {
+      console.error("Share failed:", e);
+      setSharingState("error");
+      setTimeout(() => setSharingState("idle"), 3000);
+    }
+  }
 
   // ── Escape closes expanded view / figure modal ────────────────────────────
   useEffect(() => {
@@ -335,6 +371,8 @@ export default function App() {
         scans={scans}
         onGenerateFigure={generateFigure}
         generatingFigure={generatingFigure}
+        onShare={shareSession}
+        sharingState={sharingState}
         sparkles={sparkles}
         onSparklesToggle={() => setSparkles(v => !v)}
         isExpanded={!!expandedRecord}

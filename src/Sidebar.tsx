@@ -66,6 +66,8 @@ interface Props {
   scans: ScanRecord[];
   onGenerateFigure: () => void;
   generatingFigure: boolean;
+  onShare: () => void;
+  sharingState: "idle" | "uploading" | "copied" | "error";
   sparkles: boolean;
   onSparklesToggle: () => void;
   isExpanded: boolean;
@@ -73,7 +75,7 @@ interface Props {
 
 const MAX_POLY_ORDER = 5;
 
-export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure, generatingFigure, sparkles, onSparklesToggle, isExpanded }: Props) {
+export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure, generatingFigure, onShare, sharingState, sparkles, onSparklesToggle, isExpanded }: Props) {
   const hasScans = scans.length > 0;
   function bumpPolyOrder() {
     const cur = isNaN(opts.polyOrder) ? 1 : (opts.polyOrder ?? 1);
@@ -223,6 +225,17 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
                 <FigureIcon />
                 {generatingFigure ? "Generating…" : "Generate figure"}
               </button>
+              <button
+                className="sidebar-btn"
+                onClick={onShare}
+                disabled={!hasScans || sharingState === "uploading"}
+              >
+                <ShareIcon />
+                {sharingState === "uploading" ? "Uploading…"
+                  : sharingState === "copied" ? "Link copied!"
+                  : sharingState === "error" ? "Share failed"
+                  : "Share session"}
+              </button>
             </div>
           </>
         )}
@@ -243,6 +256,15 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
         </div>
       </div>
     </div>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="13" cy="3" r="1.5"/><circle cx="13" cy="13" r="1.5"/><circle cx="3" cy="8" r="1.5"/>
+      <path d="M4.5 7.1L11.5 3.9M4.5 8.9L11.5 12.1"/>
+    </svg>
   );
 }
 
