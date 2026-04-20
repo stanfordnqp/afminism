@@ -1,7 +1,7 @@
 import type { ScanRecord, ProcessingOptions } from "./types";
 import { reprocess, computeRms } from "./processing";
 
-export const WORKER_URL = "https://afminism-share.romanddimov.workers.dev";
+export const WORKER_URL = "https://afminism-share.apateonas.workers.dev";
 
 // ── Binary format ─────────────────────────────────────────────────────────────
 // [4 bytes]  magic "AFMI"
