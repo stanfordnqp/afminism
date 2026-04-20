@@ -25,6 +25,10 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "POST" && url.pathname === "/") {
+      const contentLength = Number(request.headers.get("Content-Length") ?? 0);
+      if (contentLength > 25_000_000) {
+        return new Response("Payload too large (max 25 MB)", { status: 413, headers: cors });
+      }
       const id = crypto.randomUUID().slice(0, 8);
       await env.R2.put(id, request.body, {
         httpMetadata: { contentType: "application/octet-stream" },
