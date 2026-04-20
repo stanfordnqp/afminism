@@ -121,15 +121,8 @@ export default function App() {
       (f) => f.name.toLowerCase().endsWith(".tiff") || f.name.toLowerCase().endsWith(".tif")
     );
     if (!arr.length) return;
-    const existingNames = new Set(scans.map((s) => s.filename));
-    const dupes = arr.filter((f) => existingNames.has(f.name));
-    if (dupes.length) {
-      alert(`Already loaded — skipped:\n${dupes.map((f) => f.name).join("\n")}`);
-    }
-    const toLoad = arr.filter((f) => !existingNames.has(f.name));
-    if (!toLoad.length) return;
     const newScans: ScanRecord[] = [];
-    for (const file of toLoad) {
+    for (const file of arr) {
       try {
         const buf = await file.arrayBuffer();
         const { data, side, scanUm, meta } = parseParkTiff(buf, file.name);
