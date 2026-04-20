@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -427,17 +427,14 @@ export default function App() {
           <div className="figure-modal" onClick={(e) => e.stopPropagation()}>
             <div className="figure-modal-header">
               <span style={{ fontWeight: 600, fontSize: 14 }}>Figure preview</span>
-              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                <button className="exp-action-btn" onClick={copyFigure} title="Copy PNG"><CopyIcon /></button>
-                <button className="exp-action-btn" onClick={saveFigure} title="Download PNG"><DownloadIcon /></button>
-                <button className="icon-btn danger" onClick={closeFigureModal} style={{ marginLeft: 4 }}>✕</button>
-              </div>
+              <button className="icon-btn danger" onClick={closeFigureModal}>✕</button>
             </div>
             <div className="figure-modal-preview">
-              <img src={figureUrl} alt="figure preview" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" }} />
+              <ZoomableImage src={figureUrl} />
             </div>
-            <div style={{ padding: "8px 16px", fontSize: 11, color: "#888" }}>
-              Escape or click outside to close
+            <div style={{ display: "flex", gap: 4, justifyContent: "center", padding: "8px 16px" }}>
+              <button className="exp-action-btn" onClick={copyFigure} title="Copy PNG"><CopyIcon /></button>
+              <button className="exp-action-btn" onClick={saveFigure} title="Download PNG"><DownloadIcon /></button>
             </div>
           </div>
         </div>,
@@ -458,6 +455,141 @@ export default function App() {
       <input ref={fileInputRef} type="file" multiple accept=".tiff,.tif" style={{ display: "none" }}
         onChange={(e) => { if (e.target.files) loadFiles(e.target.files); e.target.value = ""; }} />
     </DndContext>
+  );
+}
+
+// ── Zoomable image (figure preview) ──────────────────────────────────────────
+
+const ZOOM_STEP = 1.25;
+
+function ZoomableImage({ src }: { src: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [scale, setScale] = useState(1);
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+  const fittedRef = useRef(false);
+  const fitScaleRef = useRef(1);
+
+  const fitToContainer = useCallback(() => {
+    const img = imgRef.current;
+    const container = containerRef.current;
+    if (!img || !container || !img.naturalWidth) return;
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    if (!cw || !ch) return;
+    fittedRef.current = true;
+    const s = Math.min(cw / img.naturalWidth, ch / img.naturalHeight, 1);
+    fitScaleRef.current = s;
+    setScale(s);
+  }, []);
+
+  useEffect(() => {
+    fittedRef.current = false;
+    const img = imgRef.current;
+    const container = containerRef.current;
+    if (!img || !container) return;
+    function tryFit() { if (!fittedRef.current) fitToContainer(); }
+    img.addEventListener("load", tryFit);
+    const obs = new ResizeObserver(tryFit);
+    obs.observe(container);
+    tryFit();
+    return () => { img.removeEventListener("load", tryFit); obs.disconnect(); };
+  }, [src, fitToContainer]);
+
+  // Store zoom origin so useLayoutEffect can fix scroll after scale update
+  type ZoomOrigin = { cx: number; cy: number; scrollLeft: number; scrollTop: number; oldScale: number };
+  const zoomOriginRef = useRef<ZoomOrigin | null>(null);
+
+  const zoom = useCallback((factor: number, cursorX?: number, cursorY?: number) => {
+    const el = containerRef.current;
+    if (el && cursorX !== undefined && cursorY !== undefined) {
+      zoomOriginRef.current = {
+        cx: cursorX, cy: cursorY,
+        scrollLeft: el.scrollLeft, scrollTop: el.scrollTop,
+        oldScale: scaleRef.current,
+      };
+    }
+    setScale(s => Math.max(fitScaleRef.current * 0.5, Math.min(8, s * factor)));
+  }, []);
+
+  // After scale update, adjust scroll so the point under cursor stays fixed
+  useLayoutEffect(() => {
+    const origin = zoomOriginRef.current;
+    const el = containerRef.current;
+    const img = imgRef.current;
+    if (!origin || !el || !img) return;
+    zoomOriginRef.current = null;
+    const oldIW = img.naturalWidth * origin.oldScale;
+    const oldIH = img.naturalHeight * origin.oldScale;
+    const newIW = img.naturalWidth * scaleRef.current;
+    const newIH = img.naturalHeight * scaleRef.current;
+    // image offset within scroll content (flex-centered when smaller than container)
+    const oldOffX = Math.max(0, (el.clientWidth - oldIW) / 2);
+    const oldOffY = Math.max(0, (el.clientHeight - oldIH) / 2);
+    const newOffX = Math.max(0, (el.clientWidth - newIW) / 2);
+    const newOffY = Math.max(0, (el.clientHeight - newIH) / 2);
+    // fraction of image under cursor
+    const fracX = (origin.scrollLeft + origin.cx - oldOffX) / oldIW;
+    const fracY = (origin.scrollTop + origin.cy - oldOffY) / oldIH;
+    el.scrollLeft = fracX * newIW + newOffX - origin.cx;
+    el.scrollTop  = fracY * newIH + newOffY - origin.cy;
+  }, [scale]);
+
+  // Cmd+= zoom in, Cmd+- zoom out (zoom to center)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!e.metaKey && !e.ctrlKey) return;
+      if (e.key === "=" || e.key === "+") { e.preventDefault(); zoom(ZOOM_STEP); }
+      else if (e.key === "-") { e.preventDefault(); zoom(1 / ZOOM_STEP); }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoom]);
+
+  // trackpad pinch (ctrlKey + wheel on Mac) — zoom to cursor
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    function onWheel(e: WheelEvent) {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const rect = el!.getBoundingClientRect();
+      const factor = Math.pow(ZOOM_STEP, -e.deltaY / 30);
+      zoom(factor, e.clientX - rect.left, e.clientY - rect.top);
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [zoom]);
+
+  // scaled image size for scroll area
+  const iw = (imgRef.current?.naturalWidth ?? 0) * scale;
+  const ih = (imgRef.current?.naturalHeight ?? 0) * scale;
+
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      {/* scroll container */}
+      <div
+        ref={containerRef}
+        style={{ width: "100%", height: "100%", overflow: "auto" }}
+      >
+        {/* sizing shim so scrollbar appears when image > container */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minWidth: "100%", minHeight: "100%", width: iw || "100%", height: ih || "100%" }}>
+          <img
+            ref={imgRef}
+            src={src}
+            alt="figure preview"
+            draggable={false}
+            style={{ width: iw || undefined, height: ih || undefined, display: "block", userSelect: "none", flexShrink: 0 }}
+          />
+        </div>
+      </div>
+      {/* zoom controls */}
+      <div style={{ position: "absolute", top: 8, right: 8, display: "flex", flexDirection: "column", gap: 2 }}>
+        <button className="icon-btn" onClick={() => zoom(ZOOM_STEP)} title="Zoom in (⌘+)">+</button>
+        <button className="icon-btn" onClick={() => zoom(1 / ZOOM_STEP)} title="Zoom out (⌘−)">−</button>
+      </div>
+    </div>
   );
 }
 
