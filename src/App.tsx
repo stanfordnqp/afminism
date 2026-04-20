@@ -50,7 +50,7 @@ export default function App() {
   const [figureUrl, setFigureUrl] = useState<string | null>(null);
   const [figureBlob, setFigureBlob] = useState<Blob | null>(null);
   const [generatingFigure, setGeneratingFigure] = useState(false);
-  const [sharingState, setSharingState] = useState<"idle" | "uploading" | "copied" | "error">("idle");
+  const [sharingState, setSharingState] = useState<"idle" | "uploading" | "copied" | "error" | "full">("idle");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -103,10 +103,12 @@ export default function App() {
       await navigator.clipboard.writeText(url);
       setSharingState("copied");
       setTimeout(() => setSharingState("idle"), 2500);
-    } catch (e) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "";
+      const isFull = msg.includes("Storage limit");
       console.error("Share failed:", e);
-      setSharingState("error");
-      setTimeout(() => setSharingState("idle"), 3000);
+      setSharingState(isFull ? "full" : "error");
+      setTimeout(() => setSharingState("idle"), 4000);
     }
   }
 

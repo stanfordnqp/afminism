@@ -148,6 +148,7 @@ export async function uploadSession(scans: ScanRecord[], opts: ProcessingOptions
     body: blob.buffer as ArrayBuffer,
     headers: { "Content-Type": "application/octet-stream" },
   });
+  if (res.status === 507) throw new Error("Storage limit reached — sharing temporarily unavailable");
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
   const { id } = (await res.json()) as { id: string };
   return id;

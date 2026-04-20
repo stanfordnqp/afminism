@@ -29,6 +29,15 @@ export default {
       if (contentLength > 25_000_000) {
         return new Response("Payload too large (max 25 MB)", { status: 413, headers: cors });
       }
+
+      // Check approximate bucket usage (first 1000 objects covers ~4 GB at avg session size)
+      const MAX_BYTES = 8 * 1024 * 1024 * 1024; // 8 GB — 2 GB buffer before free tier limit
+      const listed = await env.R2.list({ limit: 1000 });
+      const usedBytes = listed.objects.reduce((sum, obj) => sum + obj.size, 0);
+      if (usedBytes + contentLength > MAX_BYTES) {
+        return new Response("Storage limit reached — try again later", { status: 507, headers: cors });
+      }
+
       const id = crypto.randomUUID().slice(0, 8);
       await env.R2.put(id, request.body, {
         httpMetadata: { contentType: "application/octet-stream" },

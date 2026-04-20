@@ -67,7 +67,7 @@ interface Props {
   onGenerateFigure: () => void;
   generatingFigure: boolean;
   onShare: () => void;
-  sharingState: "idle" | "uploading" | "copied" | "error";
+  sharingState: "idle" | "uploading" | "copied" | "error" | "full";
   sparkles: boolean;
   onSparklesToggle: () => void;
   isExpanded: boolean;
@@ -234,6 +234,7 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
                 {sharingState === "uploading" ? "Uploading…"
                   : sharingState === "copied" ? "Link copied!"
                   : sharingState === "error" ? "Share failed"
+                  : sharingState === "full" ? "Storage full"
                   : "Share session"}
               </button>
             </div>
