@@ -1,12 +1,8 @@
-const ALLOWED_ORIGINS = [
-  "https://stanfordnqp.github.io",
-  "http://localhost:5173",
-  "http://localhost:4173",
-];
-
 function corsHeaders(request) {
   const origin = request.headers.get("Origin") ?? "";
-  const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  const allowed = origin === "https://stanfordnqp.github.io" || origin.startsWith("http://localhost:")
+    ? origin
+    : "https://stanfordnqp.github.io";
   return {
     "Access-Control-Allow-Origin": allowed,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
