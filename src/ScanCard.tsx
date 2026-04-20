@@ -148,7 +148,7 @@ export default function ScanCard({
           >
             <canvas ref={dataCanvasRef} className="data-canvas" />
             <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
-            <button className="canvas-rotate-btn" onClick={(e) => { e.stopPropagation(); onRotate(); }} title="Rotate 90°">↻</button>
+            <button className="canvas-rotate-btn" onClick={(e) => { e.stopPropagation(); onRotate(); }} onDoubleClick={(e) => e.stopPropagation()} title="Rotate 90°">↻</button>
             {cursorH && (
               <div className="cursor-readout" style={{ left: cursorH.cx, top: cursorH.cy }}>
                 {fmt(cursorH.v)} nm
