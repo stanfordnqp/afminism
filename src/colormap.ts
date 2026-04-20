@@ -113,7 +113,7 @@ export function drawScaleBar(
   const x2 = canvasSize - marginX;
   const yLine = canvasSize - marginY;
 
-  const padX = canvasSize * 0.025;
+  const padX = canvasSize * 0.015;
   const padAbove = canvasSize * 0.04;
   const padBelow = canvasSize * 0.015;
   const textY = yLine - canvasSize * 0.012;
