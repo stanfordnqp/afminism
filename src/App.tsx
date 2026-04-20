@@ -258,7 +258,7 @@ export default function App() {
       parts.push(`PtP = ${fmt(r.ptp)} nm`);
       const statsBaseY = y + titleH + scanSize;
       ctx.fillStyle = "#444";
-      ctx.font = "13px sans-serif";
+      ctx.font = "13px Arial, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
       ctx.fillText(parts.join("   "), x + cellW / 2, statsBaseY + 7);
@@ -690,7 +690,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     parts.push(`PtP = ${fmt(record.ptp)} nm`);
     const statsBaseY = pad + titleH + scanSize;
     ctx.fillStyle = "#444";
-    ctx.font = "13px sans-serif";
+    ctx.font = "13px Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     ctx.fillText(parts.join("   "), W / 2, statsBaseY + 7);
