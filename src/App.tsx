@@ -493,8 +493,7 @@ export default function App() {
                 {scans.length === 0 && (
                   <div className="empty-hint">
                     <DropIcon />
-                    <p>Drop Park Systems TIFF files here</p>
-                    <small>or click to browse</small>
+                    <p>Drop AFM files here</p>
                     <button className="add-files-btn-empty" onClick={() => fileInputRef.current?.click()}>
                       Browse files
                     </button>
