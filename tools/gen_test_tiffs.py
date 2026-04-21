@@ -1,5 +1,5 @@
 """
-Generate synthetic 512×512 AFM-like TIFF files with known surface statistics
+Generate synthetic 256×256 AFM-like TIFF files with known surface statistics
 for testing the PSD computation and roughness metrics.
 
 Each file is a minimal single-page grayscale float32 TIFF that Park Systems
@@ -24,7 +24,7 @@ from pathlib import Path
 OUT = Path(__file__).parent / "test_data"
 OUT.mkdir(exist_ok=True)
 
-N = 512
+N = 256
 L = 5.0  # scan size in µm
 dx = L / N  # µm per pixel
 
@@ -118,8 +118,41 @@ z_tilt = np.tile(z_tilt, (N, 1)) + rng.normal(0, 0.2, (N, N)).astype(np.float32)
 save("06_tilt_plus_noise", z_tilt,
      "Linear tilt (0.1 nm/px) + white noise σ=0.2 nm. After poly leveling, RMS→0.2 nm.")
 
+# ── 7. Parabola + pink noise + dirt clusters ──────────────────────────────────
+# Recoverable surface: order-2 poly leveling + sigma clipping should reveal 1/f².
+# Parabolic bowl with amplitude much larger than noise (tests that poly fit works).
+bowl_amp = 20.0  # nm peak-to-center amplitude
+xi = np.linspace(-1, 1, N)
+XI, YI = np.meshgrid(xi, xi)
+z_bowl = bowl_amp * (XI**2 + YI**2).astype(np.float32)
+
+# Underlying pink noise (σ = 1 nm) — what we want to recover
+amplitude_p = 1.0 / K
+amplitude_p[0, 0] = 0
+phase_p = rng.uniform(0, 2*np.pi, (N, N))
+Zk_p = amplitude_p * np.exp(1j * phase_p)
+z_noise_p = np.real(np.fft.ifft2(Zk_p)).astype(np.float32)
+z_noise_p -= z_noise_p.mean()
+z_noise_p /= z_noise_p.std()  # σ = 1 nm
+
+# Dirt clusters: ~15 random Gaussian blobs, height 15–40 nm, radius 3–6 px
+z_dirt = np.zeros((N, N), dtype=np.float32)
+n_clusters = 15
+cx = rng.integers(10, N - 10, n_clusters)
+cy = rng.integers(10, N - 10, n_clusters)
+heights = rng.uniform(15, 40, n_clusters)
+radii = rng.uniform(3, 6, n_clusters)
+for x0, y0, h, r in zip(cx, cy, heights, radii):
+    ys, xs = np.ogrid[:N, :N]
+    z_dirt += (h * np.exp(-((xs - x0)**2 + (ys - y0)**2) / (2 * r**2))).astype(np.float32)
+
+z_dirty = z_bowl + z_noise_p + z_dirt
+save("07_parabola_pink_dirt", z_dirty,
+     "Parabolic bowl (20 nm) + pink noise (σ=1 nm) + 15 dirt clusters (15–40 nm). "
+     "Apply poly order=2 + sigma clipping to recover pink noise PSD.")
+
 print("\n" + "="*60)
-print(f"Saved {6} test arrays to {OUT}/")
+print(f"Saved {7} test arrays to {OUT}/")
 print()
 print("Validation guide:")
 print("  01: PSD should be flat (constant across all frequencies)")
@@ -128,3 +161,4 @@ print(f"  03: PSD should spike at f={f_grating:.2f} 1/µm")
 print("  04: log-log PSD slope ≈ -2 (pink noise)")
 print("  05: log-log PSD slope ≈ -4 (smooth)")
 print("  06: After poly leveling order=1: RMS ≈ 0.2 nm")
+print("  07: After poly order=2 + sigma clip: PSD slope ≈ -2 (pink noise recovered)")

@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { drawColormapStripH, COLORMAP_LABELS, COLORMAP_ORDER } from "./colormap";
 import type { ColormapName } from "./colormap";
-import type { ProcessingOptions, ScanRecord } from "./types";
+import type { ProcessingOptions } from "./types";
 
 function ColormapSwatch({ name, selected, onClick }: { name: ColormapName; selected: boolean; onClick: () => void }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -63,20 +63,14 @@ interface Props {
   onToggle: (_: void) => void;
   opts: ProcessingOptions;
   onChange: (patch: Partial<ProcessingOptions>) => void;
-  scans: ScanRecord[];
-  onGenerateFigure: () => void;
-  generatingFigure: boolean;
-  onShare: () => void;
-  sharingState: "idle" | "uploading" | "copied" | "error" | "full";
-  sparkles: boolean;
-  onSparklesToggle: () => void;
   isExpanded: boolean;
+  viewMode: "grid" | "psd";
+  onSparklesToggle: () => void;
 }
 
 const MAX_POLY_ORDER = 5;
 
-export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure, generatingFigure, onShare, sharingState, sparkles, onSparklesToggle, isExpanded }: Props) {
-  const hasScans = scans.length > 0;
+export default function Sidebar({ open, onToggle, opts, onChange, isExpanded, viewMode, onSparklesToggle }: Props) {
   function bumpPolyOrder() {
     const cur = isNaN(opts.polyOrder) ? 1 : (opts.polyOrder ?? 1);
     if (cur >= MAX_POLY_ORDER) return;
@@ -87,7 +81,10 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
     <div className={`sidebar${open ? "" : " collapsed"}`}>
       <div className="sidebar-inner">
         <div className="sidebar-header">
-          <span className="sidebar-title">afminism💫</span>
+          <button className="sidebar-title" onClick={onSparklesToggle}>afminism💫</button>
+          <button className="sidebar-toggle" onClick={() => onToggle()} title="Collapse sidebar (⌘B)">
+            <SidebarPanelIcon />
+          </button>
         </div>
 
         {/* ── Processing ── */}
@@ -133,6 +130,8 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
             <InfoTip text="Subtracts the median height from each scan row independently. Removes slow horizontal drift and inter-line offsets." />
           </div>
 
+          {viewMode !== "psd" && (
+          <>
           <div className="sidebar-divider" style={{ margin: "10px 0" }} />
 
           <div className="sidebar-row">
@@ -141,8 +140,10 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
             <label htmlFor="doClip">Clip color range</label>
             <InfoTip text="Limits the colormap to ±Nσ around the mean. Pixels outside this range are shown in red (high) or blue (low), making features within the surface more visible." />
           </div>
+          </>
+          )}
 
-          {opts.doClip && (
+          {opts.doClip && viewMode !== "psd" && (
             <div className="clim-block">
               <div className="clim-desc">Color range (σ) — out of range shown in red/blue</div>
               <input type="range" min={opts.climMin} max={opts.climMax} step={0.25}
@@ -160,7 +161,7 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
                     }} />
                 </div>
                 <div className="clim-input-group">
-                  <span className="clim-label">σ =</span>
+                  <span className="clim-label">σ</span>
                   <input type="number" id="climVal" min={opts.climMin} max={opts.climMax} step={0.25}
                     value={opts.climSigma}
                     onChange={(e) => onChange({ climSigma: parseFloat(e.target.value) || opts.climSigma })} />
@@ -180,31 +181,40 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
         </div>
 
         {/* ── Colormap ── */}
-        <div className="sidebar-divider" />
-        <div className="sidebar-section">
-          <div className="sidebar-section-label">Colormap</div>
-          <div className="cmap-grid">
-            {COLORMAP_ORDER.map((cm) => (
-              <ColormapSwatch key={cm} name={cm} selected={opts.colormap === cm} onClick={() => onChange({ colormap: cm })} />
-            ))}
-          </div>
-        </div>
-
-        {/* ── Analysis ── */}
-        <div className="sidebar-divider" />
-        <div className="sidebar-section">
-          <div className="sidebar-section-label">Analysis</div>
-          <div className="sidebar-row">
-            <input type="checkbox" id="showPsd" checked={opts.showPsd}
-              onChange={(e) => onChange({ showPsd: e.target.checked })} />
-            <label htmlFor="showPsd">Show PSD</label>
-            <InfoTip text="Displays the 1D radially-averaged Power Spectral Density below each scan card. Log-log plot: x = spatial frequency (1/µm), y = PSD (nm²·µm²)." />
-          </div>
-        </div>
-
-        {/* ── Grid-only controls ── */}
-        {!isExpanded && (
+        {viewMode !== "psd" && (
           <>
+            <div className="sidebar-divider" />
+            <div className="sidebar-section">
+              <div className="sidebar-section-label">Colormap</div>
+              <div className="cmap-grid">
+                {COLORMAP_ORDER.map((cm) => (
+                  <ColormapSwatch key={cm} name={cm} selected={opts.colormap === cm} onClick={() => onChange({ colormap: cm })} />
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Analysis: grid + expanded view */}
+        {viewMode !== "psd" && (
+          <>
+            <div className="sidebar-divider" />
+            <div className="sidebar-section">
+              <div className="sidebar-section-label">Analysis</div>
+              <div className="sidebar-row">
+                <input type="checkbox" id="showPsd" checked={opts.showPsd}
+                  onChange={(e) => onChange({ showPsd: e.target.checked })} />
+                <label htmlFor="showPsd">Show PSD</label>
+                <InfoTip text="Displays the 1D radially-averaged Power Spectral Density. Log-log plot: x = spatial frequency (1/µm), y = PSD (nm²·µm²)." />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Grid + Export: grid view only */}
+        {!isExpanded && viewMode !== "psd" && (
+          <>
+
             <div className="sidebar-divider" />
             <div className="sidebar-section">
               <div className="sidebar-section-label">Grid</div>
@@ -226,66 +236,20 @@ export default function Sidebar({ open, opts, onChange, scans, onGenerateFigure,
               </div>
             </div>
 
-            <div className="sidebar-divider" />
-            <div className="sidebar-section">
-              <div className="sidebar-section-label">Export</div>
-              <button
-                className="sidebar-btn primary"
-                onClick={onGenerateFigure}
-                disabled={!hasScans || generatingFigure}
-              >
-                <FigureIcon />
-                {generatingFigure ? "Generating…" : "Generate figure"}
-              </button>
-              <button
-                className="sidebar-btn"
-                onClick={onShare}
-                disabled={!hasScans || sharingState === "uploading"}
-              >
-                <ShareIcon />
-                {sharingState === "uploading" ? "Uploading…"
-                  : sharingState === "copied" ? "Link copied!"
-                  : sharingState === "error" ? "Share failed"
-                  : sharingState === "full" ? "Storage full"
-                  : "Share session"}
-              </button>
-            </div>
           </>
         )}
 
-        <div className="sidebar-divider" />
-
-        {/* ── Sparkles ── */}
-        <div className="sidebar-section" style={{ paddingBottom: 16 }}>
-          <div className="sidebar-row" style={{ justifyContent: "space-between" }}>
-            <span style={{ fontSize: 13, color: "#444" }}>✨ Sparkles</span>
-            <label className="toggle-switch" title={sparkles ? "Disable sparkles" : "Enable sparkles"}>
-              <input type="checkbox" checked={sparkles} onChange={onSparklesToggle} />
-              <span className="toggle-track">
-                <span className="toggle-thumb" />
-              </span>
-            </label>
-          </div>
-        </div>
       </div>
     </div>
   );
 }
 
-function ShareIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <circle cx="13" cy="3" r="1.5"/><circle cx="13" cy="13" r="1.5"/><circle cx="3" cy="8" r="1.5"/>
-      <path d="M4.5 7.1L11.5 3.9M4.5 8.9L11.5 12.1"/>
-    </svg>
-  );
-}
 
-function FigureIcon() {
+function SidebarPanelIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <rect x="1" y="1" width="14" height="14" rx="2"/>
-      <path d="M1 11l4-4 3 3 3-4 4 5"/>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/>
+      <line x1="5.5" y1="2.5" x2="5.5" y2="13.5"/>
     </svg>
   );
 }

@@ -1,13 +1,14 @@
 // Dev-only: load synthetic test .npy files served by the Vite test-data plugin.
-// Each file is a 512×512 float32 array (5×5 µm scan).
+// Each file is a 256×256 float32 array (5×5 µm scan).
 
 const TEST_FILES: Array<{ filename: string; label: string }> = [
-  { filename: "01_white_noise.npy",    label: "White noise" },
-  { filename: "02_checkerboard.npy",   label: "Checkerboard" },
-  { filename: "03_1d_grating.npy",     label: "1D grating" },
-  { filename: "04_pink_noise_1f.npy",  label: "Pink noise (1/f)" },
-  { filename: "05_smooth_1f4.npy",     label: "Smooth (1/f⁴)" },
-  { filename: "06_tilt_plus_noise.npy",label: "Tilt + noise" },
+  { filename: "01_white_noise.npy",        label: "White noise" },
+  { filename: "02_checkerboard.npy",       label: "Checkerboard" },
+  { filename: "03_1d_grating.npy",         label: "1D grating" },
+  { filename: "04_pink_noise_1f.npy",      label: "Pink noise (1/f)" },
+  { filename: "05_smooth_1f4.npy",         label: "Smooth (1/f⁴)" },
+  { filename: "06_tilt_plus_noise.npy",    label: "Tilt + noise" },
+  { filename: "07_parabola_pink_dirt.npy", label: "Parabola + dirt" },
 ];
 
 interface NpyResult {
@@ -50,6 +51,17 @@ function parseNpy(buf: ArrayBuffer, filename: string, label: string): NpyResult 
 
 export async function loadTestScans(): Promise<NpyResult[]> {
   const results: NpyResult[] = [];
+
+  // Example TIFF (real scan)
+  const base = import.meta.env.BASE_URL ?? "/";
+  const exRes = await fetch(`${base}example.tiff`);
+  if (exRes.ok) {
+    const { parseParkTiff } = await import("./tiff");
+    const buf = await exRes.arrayBuffer();
+    const { data, side, scanUm } = parseParkTiff(buf, "example.tiff");
+    results.push({ data, side, scanUm, filename: "example.tiff", label: "Example" });
+  }
+
   for (const { filename, label } of TEST_FILES) {
     const res = await fetch(`/test-data/${filename}`);
     if (!res.ok) throw new Error(`Failed to fetch ${filename}: ${res.status}`);

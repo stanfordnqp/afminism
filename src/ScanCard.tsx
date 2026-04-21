@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ScanRecord, ProcessingOptions } from "./types";
-import { toImageData, renderScanForExport, drawScaleBar } from "./colormap";
+import { toImageData, drawScaleBar } from "./colormap";
 import Colorbar from "./Colorbar";
-import PsdPlot, { drawPsd } from "./PsdPlot";
+import PsdPlot from "./PsdPlot";
 
 interface Props {
   record: ScanRecord;
@@ -24,7 +24,6 @@ export default function ScanCard({
 }: Props) {
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
-  const [copying, setCopying] = useState<null | "scaled" | "raw">(null);
   const [cursorH, setCursorH] = useState<{ cx: number; cy: number; v: number } | null>(null);
 
   const sortable = useSortable({ id: record.id, disabled: !!isOverlay });
@@ -77,43 +76,6 @@ export default function ScanCard({
     redraw();
     return () => observer.disconnect();
   }, [record.scanUm]);
-
-  // ── figure canvas builder (includes PSD if showPsd) ─────────────────────
-  function buildFigureCanvas(): HTMLCanvasElement {
-    const exportSize = Math.max(record.side, 800);
-    const psdH = showPsd ? 200 : 0;
-    const W = exportSize, H = exportSize + psdH;
-    const c = document.createElement("canvas");
-    c.width = W; c.height = H;
-    const ctx = c.getContext("2d")!;
-    const scan = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, exportSize, opts.colormap);
-    ctx.drawImage(scan, 0, 0, exportSize, exportSize);
-    if (showPsd && record.psd) {
-      ctx.fillStyle = "#fafafa";
-      ctx.fillRect(0, exportSize, W, psdH);
-      drawPsd(ctx, W, psdH, [{ freqs: record.psd.freqs, power: record.psd.power, color: "#2196f3", label: record.label }], true);
-    }
-    return c;
-  }
-
-  // ── copy / download helpers ───────────────────────────────────────────────
-  async function doCopy(isData: boolean) {
-    setCopying(isData ? "raw" : "scaled");
-    try {
-      const cvs = isData ? dataCanvasRef.current! : buildFigureCanvas();
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": await canvasToBlob(cvs) })]);
-    } catch {
-      const cvs = isData ? dataCanvasRef.current! : buildFigureCanvas();
-      download(cvs.toDataURL("image/png"), `${record.label}${isData ? "_data" : "_figure"}.png`);
-    } finally {
-      setCopying(null);
-    }
-  }
-
-  function doDownload(isData: boolean) {
-    const cvs = isData ? dataCanvasRef.current! : buildFigureCanvas();
-    download(cvs.toDataURL("image/png"), `${record.label}${isData ? "_data" : "_figure"}.png`);
-  }
 
   const { rms, rmsClipped, ptp, scanUm } = record;
   const statsLine = [
@@ -177,28 +139,14 @@ export default function ScanCard({
           </div>
           <Colorbar vmin={-lim} vmax={lim} colormap={opts.colormap} />
         </div>
-        <div className="card-stats">{statsLine}</div>
-        <div className="card-filename" title={record.filename}>
-          {record.filename}{record.meta && <span className="card-meta-inline"> · {record.meta}</span>}
-        </div>
         {showPsd && (
           <div className="psd-panel">
             <PsdPlot freqs={record.psd.freqs} power={record.psd.power} color="#2196f3" showAxes />
           </div>
         )}
-        <div className="card-action-bar" onClick={(e) => e.stopPropagation()}>
-          <button className="card-img-btn" onClick={() => doCopy(true)} disabled={copying !== null} title="Copy data image">
-            {copying === "raw" ? "…" : <CopyIcon />}<span>data</span>
-          </button>
-          <button className="card-img-btn" onClick={() => doCopy(false)} disabled={copying !== null} title={showPsd ? "Copy figure + PSD" : "Copy figure"}>
-            {copying === "scaled" ? "…" : <CopyIcon />}<span>figure</span>
-          </button>
-          <button className="card-img-btn" onClick={() => doDownload(true)} disabled={copying !== null} title="Download data PNG">
-            <DownloadIcon /><span>data</span>
-          </button>
-          <button className="card-img-btn" onClick={() => doDownload(false)} disabled={copying !== null} title={showPsd ? "Download figure + PSD" : "Download figure"}>
-            <DownloadIcon /><span>figure</span>
-          </button>
+        <div className="card-stats">{statsLine}</div>
+        <div className="card-filename" title={record.filename}>
+          {record.filename}{record.meta && <span className="card-meta-inline"> · {record.meta}</span>}
         </div>
       </div>
     </div>
@@ -206,17 +154,6 @@ export default function ScanCard({
 }
 
 // ── utils ─────────────────────────────────────────────────────────────────────
-
-function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((res) => canvas.toBlob((b) => res(b!), "image/png"));
-}
-
-function download(dataUrl: string, filename: string) {
-  const a = document.createElement("a");
-  a.href = dataUrl;
-  a.download = filename;
-  a.click();
-}
 
 function fmt(n: number): string {
   if (n === 0) return "0";
@@ -232,23 +169,6 @@ function DragIcon() {
       <circle cx="4" cy="3" r="1.2"/><circle cx="10" cy="3" r="1.2"/>
       <circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/>
       <circle cx="4" cy="11" r="1.2"/><circle cx="10" cy="11" r="1.2"/>
-    </svg>
-  );
-}
-
-function CopyIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <rect x="5" y="5" width="9" height="9" rx="1.5"/>
-      <path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/>
-    </svg>
-  );
-}
-
-function DownloadIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M8 2v9M4 7l4 4 4-4"/><path d="M2 13h12"/>
     </svg>
   );
 }
