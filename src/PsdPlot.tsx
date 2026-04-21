@@ -184,17 +184,19 @@ export function drawPsd(
     const logF = logFMin + ((cursorCssX - ML) / plotW) * (logFMax - logFMin);
     const targetF = Math.pow(10, logF);
 
-    // Find nearest index in first series
-    const ref = series[0].freqs;
-    let nearestIdx = 0;
-    let bestDist = Infinity;
-    for (let i = 0; i < ref.length; i++) {
-      if (ref[i] <= 0) continue;
-      const d = Math.abs(Math.log10(ref[i]) - logF);
-      if (d < bestDist) { bestDist = d; nearestIdx = i; }
-    }
-    const snapF = ref[nearestIdx];
-    const snapX = xPx(snapF);
+    // Find nearest index per series
+    const seriesSnap = series.map(s => {
+      let idx = 0, best = Infinity;
+      for (let i = 0; i < s.freqs.length; i++) {
+        if (s.freqs[i] <= 0) continue;
+        const d = Math.abs(Math.log10(s.freqs[i]) - logF);
+        if (d < best) { best = d; idx = i; }
+      }
+      return idx;
+    });
+
+    // Vertical line at cursor (no snapping — each series snaps independently)
+    const snapX = cursorCssX;
 
     // Vertical line
     ctx.save();
@@ -204,19 +206,32 @@ export function drawPsd(
     ctx.beginPath(); ctx.moveTo(snapX, MT + titleH); ctx.lineTo(snapX, MT + titleH + plotH); ctx.stroke();
     ctx.setLineDash([]);
 
-    // Dots on each curve
-    for (const s of series) {
-      if (s.power[nearestIdx] <= 0) continue;
-      const y = yPx(s.power[nearestIdx]);
+    // Dots on each curve — omit if cursor is outside that series' freq range
+    for (let si = 0; si < series.length; si++) {
+      const s = series[si];
+      const idx = seriesSnap[si];
+      if (s.power[idx] <= 0 || s.freqs[idx] <= 0) continue;
+      let seriesFMin = Infinity, seriesFMax = -Infinity;
+      for (let i = 0; i < s.freqs.length; i++) { if (s.freqs[i] > 0) { if (s.freqs[i] < seriesFMin) seriesFMin = s.freqs[i]; if (s.freqs[i] > seriesFMax) seriesFMax = s.freqs[i]; } }
+      if (targetF < seriesFMin || targetF > seriesFMax) continue;
+      const dotX = xPx(s.freqs[idx]);
+      const dotY = yPx(s.power[idx]);
       ctx.fillStyle = s.color;
-      ctx.beginPath(); ctx.arc(snapX, y, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(dotX, dotY, 3.5, 0, Math.PI * 2); ctx.fill();
     }
 
-    // Tooltip
+    // Tooltip: only include series whose freq range covers the cursor
+    const refIdx = seriesSnap[0];
+    const snapF = series[0].freqs[refIdx];
     const tipLines: string[] = [`f = ${fmtVal(snapF)} µm⁻¹`];
-    for (const s of series) {
-      const p = s.power[nearestIdx];
-      if (p <= 0) continue;
+    for (let si = 0; si < series.length; si++) {
+      const s = series[si];
+      const idx = seriesSnap[si];
+      const p = s.power[idx];
+      if (p <= 0 || s.freqs[idx] <= 0) continue;
+      let sFMin = Infinity, sFMax = -Infinity;
+      for (let i = 0; i < s.freqs.length; i++) { if (s.freqs[i] > 0) { if (s.freqs[i] < sFMin) sFMin = s.freqs[i]; if (s.freqs[i] > sFMax) sFMax = s.freqs[i]; } }
+      if (targetF < sFMin || targetF > sFMax) continue;
       const prefix = series.length > 1 ? `${s.label}: ` : "";
       tipLines.push(`${prefix}${fmtVal(p)} nm²·µm²`);
     }
@@ -247,7 +262,6 @@ export function drawPsd(
     ctx.restore();
 
     // suppress unused warning for targetF
-    void targetF;
   }
 }
 
