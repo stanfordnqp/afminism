@@ -12,6 +12,7 @@ export interface ProcessingOptions {
   climMax: number; // slider range max
   columns: number;
   colormap: ColormapName;
+  showPsd: boolean;
 }
 
 export interface ScanRecord {
@@ -29,4 +30,5 @@ export interface ScanRecord {
   rms: number;
   rmsClipped: number;
   ptp: number;
+  psd: { freqs: Float32Array; power: Float32Array };
 }

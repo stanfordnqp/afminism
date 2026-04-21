@@ -17,10 +17,14 @@ import RainbowTrail from "./RainbowTrail";
 import FeedbackButton from "./FeedbackButton";
 import { parseParkTiff } from "./tiff";
 import { reprocess, computeRms } from "./processing";
+import { computePSD } from "./psd";
 import { toImageData, renderScanForExport, drawScaleBar, drawColorbar } from "./colormap";
 import Colorbar from "./Colorbar";
+import PsdPlot, { drawPsd } from "./PsdPlot";
+import PsdSummaryView, { buildPsdSummaryCanvas } from "./PsdSummaryView";
 import type { ScanRecord, ProcessingOptions } from "./types";
 import { uploadSession, downloadSession } from "./share";
+import { loadTestScans } from "./test_loader";
 
 const DEFAULT_OPTS: ProcessingOptions = {
   doPoly: true,
@@ -33,6 +37,7 @@ const DEFAULT_OPTS: ProcessingOptions = {
   climMax: 20,
   columns: 2,
   colormap: "afmhot" as const,
+  showPsd: false,
 };
 
 let idCounter = 0;
@@ -51,6 +56,9 @@ export default function App() {
   const [figureBlob, setFigureBlob] = useState<Blob | null>(null);
   const [generatingFigure, setGeneratingFigure] = useState(false);
   const [sharingState, setSharingState] = useState<"idle" | "uploading" | "copied" | "error" | "full">("idle");
+  const [viewMode, setViewMode] = useState<"grid" | "psd">("grid");
+  const [psdFigureSize, setPsdFigureSize] = useState<{ w: number; h: number }>({ w: 900, h: 560 });
+  const [psdTitle, setPsdTitle] = useState("PSD Summary");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -82,10 +90,11 @@ export default function App() {
         const exampleOpts: ProcessingOptions = { ...DEFAULT_OPTS, doClip: true, climSigma: 2 };
         const z = reprocess(data, side, exampleOpts, 0);
         const { rms, rmsClipped, ptp } = computeRms(z, exampleOpts.climSigma);
+        const psd = computePSD(z, side, scanUm);
         const record: ScanRecord = {
           id: uid(), filename: "example.tiff", label: "Example Scan",
           zRaw: data, side, scanUm, rotation: 0, isExample: true,
-          z, rms, rmsClipped, ptp, meta,
+          z, rms, rmsClipped, ptp, psd, meta,
         };
         setScans([record]);
       })
@@ -112,12 +121,16 @@ export default function App() {
     }
   }
 
-  // ── Escape closes expanded view / figure modal ────────────────────────────
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setExpandedId(null);
         if (figureUrl) { URL.revokeObjectURL(figureUrl); setFigureUrl(null); setFigureBlob(null); }
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        e.preventDefault();
+        setSidebarOpen((v) => !v);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -133,14 +146,16 @@ export default function App() {
   ): ScanRecord {
     const z = reprocess(zRaw, side, o, rotation);
     const { rms, rmsClipped, ptp } = computeRms(z, o.climSigma);
-    return { id, filename, label, zRaw, side, scanUm, rotation, z, rms, rmsClipped, ptp, meta };
+    const psd = computePSD(z, side, scanUm);
+    return { id, filename, label, zRaw, side, scanUm, rotation, z, rms, rmsClipped, ptp, psd, meta };
   }
 
   function applyOpts(prevScans: ScanRecord[], newOpts: ProcessingOptions): ScanRecord[] {
     return prevScans.map((s) => {
       const z = reprocess(s.zRaw, s.side, newOpts, s.rotation);
       const { rms, rmsClipped, ptp } = computeRms(z, newOpts.climSigma);
-      return { ...s, z, rms, rmsClipped, ptp };
+      const psd = computePSD(z, s.side, s.scanUm);
+      return { ...s, z, rms, rmsClipped, ptp, psd };
     });
   }
 
@@ -209,7 +224,8 @@ export default function App() {
       const rotation = (r.rotation + 90) % 360;
       const z = reprocess(r.zRaw, r.side, opts, rotation);
       const { rms, rmsClipped, ptp } = computeRms(z, opts.climSigma);
-      return { ...r, rotation, z, rms, rmsClipped, ptp };
+      const psd = computePSD(z, r.side, r.scanUm);
+      return { ...r, rotation, z, rms, rmsClipped, ptp, psd };
     }));
   }
 
@@ -235,6 +251,18 @@ export default function App() {
     if (!visible.length) return;
     setGeneratingFigure(true);
 
+    if (viewMode === "psd") {
+      const canvas = buildPsdSummaryCanvas(visible, psdFigureSize.w, psdFigureSize.h, psdTitle);
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        setFigureUrl(url);
+        setFigureBlob(blob);
+        setGeneratingFigure(false);
+      }, "image/png");
+      return;
+    }
+
     const cols = opts.columns;
     const rows = Math.ceil(visible.length / cols);
     const scanSize = 700;
@@ -244,9 +272,10 @@ export default function App() {
     const padding = 24;
     const colorbarW = 62;
     const colorbarGap = 8;
+    const psdH = opts.showPsd ? Math.round(scanSize / 2) : 0;
 
     const cellW = scanSize + colorbarGap + colorbarW;
-    const cellH = scanSize + titleH + statsH;
+    const cellH = scanSize + titleH + statsH + psdH;
 
     const procParts: string[] = [];
     if (opts.doPoly) procParts.push(`Poly leveling order ${opts.polyOrder} (σ = ${opts.polySigma})`);
@@ -291,10 +320,18 @@ export default function App() {
       ctx.textBaseline = "middle";
       ctx.fillText(r.label, x + cellW / 2, y + titleH / 2);
 
+      if (opts.showPsd && r.psd) {
+        const psdY = y + titleH + scanSize;
+        ctx.save();
+        ctx.translate(x, psdY);
+        drawPsd(ctx, cellW, psdH, [{ freqs: r.psd.freqs, power: r.psd.power, color: "#2196f3", label: r.label }], true);
+        ctx.restore();
+      }
+
       const parts = [`${r.scanUm[0]}×${r.scanUm[1]} µm`, `Rq = ${fmt(r.rms)} nm`];
       if (opts.doClip) parts.push(`Rq* = ${fmt(r.rmsClipped)} nm`);
       parts.push(`PtP = ${fmt(r.ptp)} nm`);
-      const statsBaseY = y + titleH + scanSize;
+      const statsBaseY = y + titleH + scanSize + psdH;
       ctx.fillStyle = "#444";
       ctx.font = "13px Arial, sans-serif";
       ctx.textAlign = "center";
@@ -370,20 +407,11 @@ export default function App() {
         onToggle={() => setSidebarOpen((v) => !v)}
         opts={opts}
         onChange={handleOptsChange}
-        scans={scans}
-        onGenerateFigure={generateFigure}
-        generatingFigure={generatingFigure}
-        onShare={shareSession}
-        sharingState={sharingState}
-        sparkles={sparkles}
-        onSparklesToggle={() => setSparkles(v => !v)}
         isExpanded={!!expandedRecord}
+        viewMode={viewMode}
+        onSparklesToggle={() => setSparkles(v => !v)}
       />
 
-      <button className="sidebar-toggle" onClick={() => setSidebarOpen((v) => !v)}
-        title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}>
-        {sidebarOpen ? "‹" : "›"}
-      </button>
 
       <main className="main">
         {/* ── Expanded single-scan view ── */}
@@ -394,47 +422,127 @@ export default function App() {
             onClose={() => setExpandedId(null)}
             onRotate={() => rotateCard(expandedRecord.id)}
             onLabelChange={(l) => labelCard(expandedRecord.id, l)}
+            onToggleSidebar={() => setSidebarOpen(v => !v)}
+            sidebarOpen={sidebarOpen}
+            onGenerateFigure={(blob) => {
+              const url = URL.createObjectURL(blob);
+              setFigureUrl(url);
+              setFigureBlob(blob);
+            }}
           />
         ) : (
-          <div
-            className={`drop-zone${dragOver ? " drag-over" : ""}`}
-            onDragEnter={onDragEnter}
-            onDragLeave={onDragLeave}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-          >
-            {scans.length === 0 && (
-              <div className="empty-hint">
-                <DropIcon />
-                <p>Drop Park Systems TIFF files here</p>
-                <small>or click to browse</small>
-                <button className="add-files-btn-empty" onClick={() => fileInputRef.current?.click()}>
-                  Browse files
+          <>
+            {/* View mode tab bar */}
+            {scans.length > 0 && (
+              <div className="view-tab-bar">
+                <button
+                  className="sidebar-toggle sidebar-toggle-inline"
+                  onClick={() => setSidebarOpen(v => !v)}
+                  title="Toggle sidebar (⌘B)"
+                  style={{ display: sidebarOpen ? "none" : undefined }}
+                >
+                  <SidebarToggleIcon />
                 </button>
+                {scans.length > 0 && (
+                  <div className="view-tab-group">
+                    <button
+                      className={`view-tab${viewMode === "grid" ? " active" : ""}`}
+                      onClick={() => setViewMode("grid")}
+                    >Grid</button>
+                    <button
+                      className={`view-tab${viewMode === "psd" ? " active" : ""}`}
+                      onClick={() => setViewMode("psd")}
+                    >PSD</button>
+                  </div>
+                )}
+                {scans.length > 0 && (
+                  <div className="topbar-actions">
+                    <button
+                      className="topbar-btn primary"
+                      onClick={generateFigure}
+                      disabled={generatingFigure}
+                    >
+                      <FigureIcon />
+                      {generatingFigure ? "Generating…" : "Generate figure"}
+                    </button>
+                    <button
+                      className="topbar-btn"
+                      onClick={shareSession}
+                      disabled={sharingState === "uploading"}
+                    >
+                      <ShareIcon />
+                      {sharingState === "uploading" ? "Uploading…"
+                        : sharingState === "copied" ? "Link copied!"
+                        : sharingState === "error" ? "Share failed"
+                        : sharingState === "full" ? "Storage full"
+                        : "Share"}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
-            {scans.length > 0 && (
-              <>
-                <SortableContext items={scans.map((s) => s.id)} strategy={rectSortingStrategy}>
-                  <div className="card-grid" style={{ "--cols": opts.columns } as React.CSSProperties}>
-                    {scans.map((r) => (
-                      <ScanCard
-                        key={r.id}
-                        record={r}
-                        opts={opts}
-                        onRemove={() => removeCard(r.id)}
-                        onLabelChange={(l) => labelCard(r.id, l)}
-                        onRotate={() => rotateCard(r.id)}
-                        onExpand={() => setExpandedId(r.id)}
-                        isNew={newIds.has(r.id)}
-                      />
-                    ))}
+            {viewMode === "psd" ? (
+              <PsdSummaryView scans={scans} onDrop={loadFiles} onSizeChange={(w, h) => setPsdFigureSize({ w, h })} title={psdTitle} onTitleChange={setPsdTitle} />
+            ) : (
+              <div
+                className={`drop-zone${dragOver ? " drag-over" : ""}`}
+                onDragEnter={onDragEnter}
+                onDragLeave={onDragLeave}
+                onDragOver={onDragOver}
+                onDrop={onDrop}
+              >
+                {scans.length === 0 && (
+                  <div className="empty-hint">
+                    <DropIcon />
+                    <p>Drop Park Systems TIFF files here</p>
+                    <small>or click to browse</small>
+                    <button className="add-files-btn-empty" onClick={() => fileInputRef.current?.click()}>
+                      Browse files
+                    </button>
+                    {import.meta.env.DEV && (
+                      <button
+                        className="add-files-btn-empty dev-load-btn"
+                        onClick={async () => {
+                          try {
+                            const results = await loadTestScans();
+                            const newScans = results.map(({ data, side, scanUm, filename, label }) =>
+                              buildRecord(uid(), filename, label, data, side, scanUm, 0, opts)
+                            );
+                            setScans(newScans);
+                          } catch (e) {
+                            console.error("Failed to load test scans:", e);
+                          }
+                        }}
+                      >
+                        Load test scans (dev)
+                      </button>
+                    )}
                   </div>
-                </SortableContext>
-              </>
+                )}
+
+                {scans.length > 0 && (
+                  <SortableContext items={scans.map((s) => s.id)} strategy={rectSortingStrategy}>
+                    <div className="card-grid" style={{ "--cols": opts.columns } as React.CSSProperties}>
+                      {scans.map((r) => (
+                        <ScanCard
+                          key={r.id}
+                          record={r}
+                          opts={opts}
+                          onRemove={() => removeCard(r.id)}
+                          onLabelChange={(l) => labelCard(r.id, l)}
+                          onRotate={() => rotateCard(r.id)}
+                          onExpand={() => setExpandedId(r.id)}
+                          isNew={newIds.has(r.id)}
+                          showPsd={opts.showPsd}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
       </main>
 
@@ -460,14 +568,14 @@ export default function App() {
           <div className="figure-modal" onClick={(e) => e.stopPropagation()}>
             <div className="figure-modal-header">
               <span style={{ fontWeight: 600, fontSize: 14 }}>Figure preview</span>
-              <button className="icon-btn danger" onClick={closeFigureModal}>✕</button>
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <button className="icon-btn" onClick={copyFigure} title="Copy PNG"><CopyIcon /></button>
+                <button className="icon-btn" onClick={saveFigure} title="Download PNG"><DownloadIcon /></button>
+                <button className="icon-btn danger" onClick={closeFigureModal}>✕</button>
+              </div>
             </div>
             <div className="figure-modal-preview">
               <ZoomableImage src={figureUrl} />
-            </div>
-            <div style={{ display: "flex", gap: 4, justifyContent: "center", padding: "8px 16px" }}>
-              <button className="exp-action-btn" onClick={copyFigure} title="Copy PNG"><CopyIcon /></button>
-              <button className="exp-action-btn" onClick={saveFigure} title="Download PNG"><DownloadIcon /></button>
             </div>
           </div>
         </div>,
@@ -628,17 +736,21 @@ function ZoomableImage({ src }: { src: string }) {
 
 // ── Expanded view (replaces grid when a card is opened) ───────────────────────
 
-function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
+function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenerateFigure, onToggleSidebar, sidebarOpen }: {
   record: ScanRecord;
   opts: ProcessingOptions;
   onClose: () => void;
   onRotate: () => void;
   onLabelChange: (l: string) => void;
+  onGenerateFigure: (blob: Blob) => void;
+  onToggleSidebar: () => void;
+  sidebarOpen: boolean;
 }) {
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
-  type Action = "copy-data" | "copy-figure" | "dl-data" | "dl-figure";
-  const [copying, setCopying] = useState<Action | null>(null);
+  const canvasWrapRef = useRef<HTMLDivElement>(null);
+  const [scanPx, setScanPx] = useState(0);
+  const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [cursorH, setCursorH] = useState<{ cx: number; cy: number; v: number } | null>(null);
@@ -680,10 +792,50 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     return () => obs.disconnect();
   }, [record.scanUm]);
 
+  // Track canvas pixel size so PSD can match width
+  useEffect(() => {
+    const wrap = canvasWrapRef.current;
+    if (!wrap) return;
+    const obs = new ResizeObserver(() => setScanPx(wrap.offsetWidth));
+    obs.observe(wrap);
+    setScanPx(wrap.offsetWidth);
+    return () => obs.disconnect();
+  }, []);
+
   function showToast(msg: string) {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 2000);
+  }
+
+  async function doGenerateFigure() {
+    setBusy("figure");
+    const c = buildFigureCanvas();
+    c.toBlob((blob) => {
+      if (blob) onGenerateFigure(blob);
+      setBusy(null);
+    }, "image/png");
+  }
+
+  async function doDownload(type: "raw" | "processed") {
+    setBusy(type);
+    try {
+      let c: HTMLCanvasElement;
+      if (type === "raw") {
+        let rawMax = 0;
+        for (let j = 0; j < record.zRaw.length; j++) if (Math.abs(record.zRaw[j]) > rawMax) rawMax = Math.abs(record.zRaw[j]);
+        c = renderScanForExport(record.zRaw, record.side, record.scanUm, -rawMax, rawMax, false, record.side, opts.colormap);
+      } else {
+        c = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, record.side, opts.colormap);
+      }
+      const a = document.createElement("a");
+      a.href = c.toDataURL("image/png");
+      a.download = `${record.label}_${type}.png`;
+      a.click();
+      showToast(`Downloaded ${type}`);
+    } finally {
+      setBusy(null);
+    }
   }
 
   function buildFigureCanvas(): HTMLCanvasElement {
@@ -693,6 +845,8 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     const pad = 20;
     const colorbarW = 62;
     const colorbarGap = 8;
+    const psdW = opts.showPsd ? Math.round(scanSize * 2 / 3) : 0;
+    const psdGap = opts.showPsd ? 16 : 0;
 
     const procParts: string[] = [];
     if (opts.doPoly) procParts.push(`Poly leveling order ${opts.polyOrder} (σ = ${opts.polySigma})`);
@@ -701,8 +855,9 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     const procText = procParts.join("  ·  ");
     const footerH = 42;
 
-    const W = 2 * pad + scanSize + colorbarGap + colorbarW;
-    const H = 2 * pad + titleH + scanSize + statsH + footerH;
+    const subTitleHCalc = opts.showPsd ? 22 : 0;
+    const W = 2 * pad + scanSize + colorbarGap + colorbarW + psdGap + psdW;
+    const H = 2 * pad + titleH + subTitleHCalc + scanSize + statsH + footerH;
     const scale = 2;
     const c = document.createElement("canvas");
     c.width = W * scale; c.height = H * scale;
@@ -711,33 +866,58 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, W, H);
 
+    const scanBlockW = scanSize + colorbarGap + colorbarW;
+    const subTitleH = subTitleHCalc;
+
+    // Main title: centered over whole figure when PSD present, else over scan block
     ctx.fillStyle = "#111";
     ctx.font = "bold 20px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(record.label, W / 2, pad + titleH / 2);
 
+    // Subtitles when PSD is shown
+    if (opts.showPsd) {
+      ctx.fillStyle = "#333";
+      ctx.font = "bold 15px Arial, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("Scan", pad + scanBlockW / 2, pad + titleH + subTitleH / 2);
+      const psdX = pad + scanBlockW + psdGap;
+      ctx.fillText("Radial Power Spectral Density", psdX + psdW / 2, pad + titleH + subTitleH / 2);
+    }
+
+    const contentY = pad + titleH + subTitleH;
+
     const scanCvs = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, scanSize * scale, opts.colormap);
-    ctx.drawImage(scanCvs, pad, pad + titleH, scanSize, scanSize);
+    ctx.drawImage(scanCvs, pad, contentY, scanSize, scanSize);
 
     ctx.save();
-    ctx.translate(pad + scanSize + colorbarGap, pad + titleH);
+    ctx.translate(pad + scanSize + colorbarGap, contentY);
     drawColorbar(ctx, -lim, lim, colorbarW, scanSize, false, opts.colormap);
     ctx.restore();
 
     const parts = [`${record.scanUm[0]}×${record.scanUm[1]} µm`, `Rq = ${fmt(record.rms)} nm`];
     if (opts.doClip) parts.push(`Rq* = ${fmt(record.rmsClipped)} nm`);
     parts.push(`PtP = ${fmt(record.ptp)} nm`);
-    const statsBaseY = pad + titleH + scanSize;
+    const statsBaseY = contentY + scanSize;
     ctx.fillStyle = "#444";
     ctx.font = "13px Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText(parts.join("   "), W / 2, statsBaseY + 7);
+    ctx.fillText(parts.join("   "), pad + scanBlockW / 2, statsBaseY + 7);
     const fileMeta = record.filename + (record.meta ? " · " + record.meta : "");
     ctx.fillStyle = "#aaa";
     ctx.font = "10px Arial, sans-serif";
-    ctx.fillText(fileMeta, W / 2, statsBaseY + 26);
+    ctx.fillText(fileMeta, pad + scanBlockW / 2, statsBaseY + 26);
+
+    if (opts.showPsd && record.psd) {
+      const psdX = pad + scanBlockW + psdGap;
+      ctx.save();
+      ctx.translate(psdX, contentY);
+      drawPsd(ctx, psdW, scanSize, [{ freqs: record.psd.freqs, power: record.psd.power, color: "#2196f3", label: "" }], true);
+      ctx.restore();
+    }
 
     const footerY = H - footerH;
     ctx.strokeStyle = "#e0e0e0";
@@ -761,34 +941,17 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
     return c;
   }
 
-  async function doAction(action: Action) {
-    setCopying(action);
-    const isData = action === "copy-data" || action === "dl-data";
-    const isDownload = action === "dl-data" || action === "dl-figure";
-    try {
-      const cvs = isData ? dataCanvasRef.current! : buildFigureCanvas();
-      if (isDownload) {
-        const a = document.createElement("a");
-        a.href = cvs.toDataURL("image/png");
-        a.download = `${record.label}${isData ? "_data" : "_figure"}.png`;
-        a.click();
-        showToast(`Downloaded ${isData ? "data" : "figure"}`);
-      } else {
-        const blob = await new Promise<Blob>((res) => cvs.toBlob((b) => res(b!), "image/png"));
-        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-        showToast(`Copied ${isData ? "data" : "figure"}`);
-      }
-    } catch (e) {
-      console.error(e);
-      showToast("Failed ✕");
-    } finally {
-      setCopying(null);
-    }
-  }
-
   return (
     <div className="expanded-view">
       <div className="expanded-header">
+        <button
+          className="sidebar-toggle sidebar-toggle-inline"
+          onClick={onToggleSidebar}
+          title="Expand sidebar (⌘B)"
+          style={{ display: sidebarOpen ? "none" : undefined }}
+        >
+          <SidebarToggleIcon />
+        </button>
         <button className="icon-btn" onClick={onClose} title="Back to grid (Esc)" style={{ marginRight: 4 }}>
           <BackIcon />
         </button>
@@ -799,58 +962,69 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange }: {
           title="Click to rename"
           style={{ fontSize: 15, fontWeight: 700, maxWidth: 220 }}
         />
-        {/* copy / download group */}
-        <div className="exp-action-group">
-          <button className="exp-action-btn" onClick={() => doAction("copy-data")} disabled={copying !== null} title="Copy data image">
-            {copying === "copy-data" ? "…" : <CopyIcon />}
-            <span>data</span>
+        <div className="topbar-actions">
+          <button className="topbar-btn primary" onClick={doGenerateFigure} disabled={busy !== null}>
+            <FigureIcon />{busy === "figure" ? "Generating…" : "Generate figure"}
           </button>
-          <button className="exp-action-btn" onClick={() => doAction("copy-figure")} disabled={copying !== null} title="Copy figure (title + scale bar + stats)">
-            {copying === "copy-figure" ? "…" : <CopyIcon />}
-            <span>figure</span>
+          <button className="topbar-btn" onClick={() => doDownload("raw")} disabled={busy !== null} title="Download unprocessed scan data as PNG (no leveling, no clipping)">
+            <DownloadIcon />Raw
           </button>
-          <button className="exp-action-btn" onClick={() => doAction("dl-data")} disabled={copying !== null} title="Download data PNG">
-            {copying === "dl-data" ? "…" : <DownloadIcon />}
-            <span>data</span>
-          </button>
-          <button className="exp-action-btn" onClick={() => doAction("dl-figure")} disabled={copying !== null} title="Download figure PNG">
-            {copying === "dl-figure" ? "…" : <DownloadIcon />}
-            <span>figure</span>
+          <button className="topbar-btn" onClick={() => doDownload("processed")} disabled={busy !== null} title="Download processed scan pixels as PNG (leveling + color range applied)">
+            <DownloadIcon />Processed
           </button>
         </div>
-        <span style={{ fontSize: 11, color: "#bbb", marginLeft: "auto" }}>{record.filename}</span>
       </div>
-      <div className="expanded-body">
+
+      <div className="expanded-body" style={{
+        "--scan-h": opts.showPsd
+          ? "min(calc(100vh - 130px), calc((100vw - var(--sidebar-w, 260px) - 315px) * 0.6))"
+          : "min(calc(100vh - 130px), calc(100vw - var(--sidebar-w, 260px) - 299px))",
+      } as React.CSSProperties}>
         <div className="expanded-canvas-area">
-          <div className="canvas-and-cb-group">
-            <div
-              className="card-canvas-wrap expanded-canvas-wrap"
-              style={{ position: "relative" }}
-              onMouseMove={(e) => {
-                const canvas = dataCanvasRef.current;
-                if (!canvas) return;
-                const r = canvas.getBoundingClientRect();
-                const px = (e.clientX - r.left) / r.width;
-                const py = (e.clientY - r.top) / r.height;
-                const ix = Math.min(record.side - 1, Math.max(0, Math.floor(px * record.side)));
-                const iy = Math.min(record.side - 1, Math.max(0, Math.floor(py * record.side)));
-                setCursorH({ cx: e.clientX - r.left, cy: e.clientY - r.top, v: record.z[iy * record.side + ix] });
-              }}
-              onMouseLeave={() => setCursorH(null)}
-            >
-              <canvas ref={dataCanvasRef} className="data-canvas" />
-              <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
-              <button className="canvas-rotate-btn" onClick={onRotate} title="Rotate 90° clockwise">↻</button>
-              {cursorH && (
-                <div className="cursor-readout" style={{ left: cursorH.cx, top: cursorH.cy }}>
-                  {fmt(cursorH.v)} nm
-                </div>
-              )}
+          <div className="expanded-content-row">
+            {/* Scan + colorbar */}
+            <div className="expanded-scan-row">
+              <div
+                ref={canvasWrapRef}
+                className="card-canvas-wrap expanded-canvas-wrap"
+                style={{ position: "relative" }}
+                onMouseMove={(e) => {
+                  const canvas = dataCanvasRef.current;
+                  if (!canvas) return;
+                  const r = canvas.getBoundingClientRect();
+                  const px = (e.clientX - r.left) / r.width;
+                  const py = (e.clientY - r.top) / r.height;
+                  const ix = Math.min(record.side - 1, Math.max(0, Math.floor(px * record.side)));
+                  const iy = Math.min(record.side - 1, Math.max(0, Math.floor(py * record.side)));
+                  setCursorH({ cx: e.clientX - r.left, cy: e.clientY - r.top, v: record.z[iy * record.side + ix] });
+                }}
+                onMouseLeave={() => setCursorH(null)}
+              >
+                <canvas ref={dataCanvasRef} className="data-canvas" />
+                <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
+                <button className="canvas-rotate-btn" onClick={onRotate} title="Rotate 90° clockwise">↻</button>
+                {cursorH && (
+                  <div className="cursor-readout" style={{ left: cursorH.cx, top: cursorH.cy }}>
+                    {fmt(cursorH.v)} nm
+                  </div>
+                )}
+              </div>
+              <Colorbar vmin={-lim} vmax={lim} expanded colormap={opts.colormap} />
             </div>
-            <Colorbar vmin={-lim} vmax={lim} expanded colormap={opts.colormap} />
+            {/* PSD to the right */}
+            {opts.showPsd && scanPx > 0 && (
+              <div className="expanded-psd-right" style={{ width: Math.round(scanPx * 2 / 3), height: Math.round(scanPx * 2 / 3) }}>
+                <PsdPlot freqs={record.psd.freqs} power={record.psd.power} color="#2196f3" showAxes title="Radial Power Spectral Density" />
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Right stats panel */}
         <div className="expanded-stats-panel">
+          {record.filename && (
+            <div className="expanded-stats-filename">{record.filename}</div>
+          )}
           <div className="expanded-stats-title">Analysis</div>
           {record.meta && (
             <StatRow label="Source" value={record.meta}
@@ -953,6 +1127,33 @@ function DownloadIcon() {
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
       <path d="M8 2v9M4 7l4 4 4-4"/>
       <path d="M2 13h12"/>
+    </svg>
+  );
+}
+
+function FigureIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="1" y="1" width="14" height="14" rx="2"/>
+      <path d="M1 11l4-4 3 3 3-4 4 5"/>
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="13" cy="3" r="1.5"/><circle cx="13" cy="13" r="1.5"/><circle cx="3" cy="8" r="1.5"/>
+      <path d="M4.5 7.1L11.5 3.9M4.5 8.9L11.5 12.1"/>
+    </svg>
+  );
+}
+
+function SidebarToggleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/>
+      <line x1="5.5" y1="2.5" x2="5.5" y2="13.5"/>
     </svg>
   );
 }
