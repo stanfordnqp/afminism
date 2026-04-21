@@ -433,54 +433,52 @@ export default function App() {
         ) : (
           <>
             {/* View mode tab bar */}
-            {scans.length > 0 && (
-              <div className="view-tab-bar">
-                <button
-                  className="sidebar-toggle sidebar-toggle-inline"
-                  onClick={() => setSidebarOpen(v => !v)}
-                  title="Toggle sidebar (⌘B)"
-                  style={{ display: sidebarOpen ? "none" : undefined }}
-                >
-                  <SidebarToggleIcon />
-                </button>
-                {scans.length > 0 && (
-                  <div className="view-tab-group">
-                    <button
-                      className={`view-tab${viewMode === "grid" ? " active" : ""}`}
-                      onClick={() => setViewMode("grid")}
-                    >Grid</button>
-                    <button
-                      className={`view-tab${viewMode === "psd" ? " active" : ""}`}
-                      onClick={() => setViewMode("psd")}
-                    >PSD</button>
-                  </div>
-                )}
-                {scans.length > 0 && (
-                  <div className="topbar-actions">
-                    <button
-                      className="topbar-btn primary"
-                      onClick={generateFigure}
-                      disabled={generatingFigure}
-                    >
-                      <FigureIcon />
-                      {generatingFigure ? "Generating…" : "Generate figure"}
-                    </button>
-                    <button
-                      className="topbar-btn"
-                      onClick={shareSession}
-                      disabled={sharingState === "uploading"}
-                    >
-                      <ShareIcon />
-                      {sharingState === "uploading" ? "Uploading…"
-                        : sharingState === "copied" ? "Link copied!"
-                        : sharingState === "error" ? "Share failed"
-                        : sharingState === "full" ? "Storage full"
-                        : "Share"}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="view-tab-bar">
+              <button
+                className="sidebar-toggle sidebar-toggle-inline"
+                onClick={() => setSidebarOpen(v => !v)}
+                title="Toggle sidebar (⌘B)"
+                style={{ display: sidebarOpen ? "none" : undefined }}
+              >
+                <SidebarToggleIcon />
+              </button>
+              {scans.length > 0 && (
+                <div className="view-tab-group">
+                  <button
+                    className={`view-tab${viewMode === "grid" ? " active" : ""}`}
+                    onClick={() => setViewMode("grid")}
+                  >Grid</button>
+                  <button
+                    className={`view-tab${viewMode === "psd" ? " active" : ""}`}
+                    onClick={() => setViewMode("psd")}
+                  >PSD</button>
+                </div>
+              )}
+              {scans.length > 0 && (
+                <div className="topbar-actions">
+                  <button
+                    className="topbar-btn primary"
+                    onClick={generateFigure}
+                    disabled={generatingFigure}
+                  >
+                    <FigureIcon />
+                    {generatingFigure ? "Generating…" : "Generate figure"}
+                  </button>
+                  <button
+                    className="topbar-btn"
+                    onClick={shareSession}
+                    disabled={sharingState === "uploading"}
+                  >
+                    <ShareIcon />
+                    {sharingState === "uploading" ? "Uploading…"
+                      : sharingState === "copied" ? "Link copied!"
+                      : sharingState === "error" ? "Share failed"
+                      : sharingState === "full" ? "Storage full"
+                      : "Share"}
+                  </button>
+                </div>
+              )}
+            </div>
 
             {viewMode === "psd" ? (
               <PsdSummaryView scans={scans} onDrop={loadFiles} onSizeChange={(w, h) => setPsdFigureSize({ w, h })} title={psdTitle} onTitleChange={setPsdTitle} />
