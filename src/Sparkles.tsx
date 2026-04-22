@@ -14,7 +14,10 @@ interface Unicorn {
   vy: number;
   life: number;
   size: number;
+  emoji: string;
 }
+
+const EMOJIS = ["🦄", "✨", "🌈", "⭐", "🎉", "💫", "🌟", "🎊", "🦋", "🔮"];
 
 const COLORS = [
   "#FFD700", "#FF69B4", "#FF1493", "#00CFFF", "#7CFC00", "#FF6347",
@@ -22,7 +25,7 @@ const COLORS = [
   "#FDE68A", "#E0E0FF", "#ffffff", "#FFAAFF", "#AAFFFF",
 ];
 
-const MAX_PARTICLES = 250;
+const MAX_PARTICLES = 600;
 
 function spawnBurst(particles: Particle[], x: number, y: number, count: number, burst = false) {
   const room = MAX_PARTICLES - particles.length;
@@ -115,6 +118,8 @@ export default function Sparkles({ enabled }: { enabled: boolean }) {
   const enabledRef = useRef(enabled);
   // Cursor drip throttle
   const lastDripRef = useRef<{ x: number; y: number; t: number }>({ x: 0, y: 0, t: 0 });
+  // Click burst throttle — prevent lag on rapid clicking
+  const lastBurstRef = useRef<number>(0);
 
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
 
@@ -151,7 +156,7 @@ export default function Sparkles({ enabled }: { enabled: boolean }) {
         ctx.textBaseline = "middle";
         ctx.shadowBlur = 12;
         ctx.shadowColor = "#f9a8d4";
-        ctx.fillText("🦄", u.x, u.y);
+        ctx.fillText(u.emoji, u.x, u.y);
         ctx.restore();
       }
 
@@ -170,41 +175,37 @@ export default function Sparkles({ enabled }: { enabled: boolean }) {
       const dx = e.clientX - last.x;
       const dy = e.clientY - last.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      // Spawn 1-2 drips every ~40ms or 10px of movement, whichever triggers first
-      if (now - last.t < 40 && dist < 10) return;
+      // Spawn 1-3 drips every ~20ms or 6px of movement, whichever triggers first
+      if (now - last.t < 20 && dist < 6) return;
       lastDripRef.current = { x: e.clientX, y: e.clientY, t: now };
-      const count = dist > 20 ? 2 : 1;
+      const count = dist > 20 ? 3 : dist > 8 ? 2 : 1;
       for (let i = 0; i < count; i++) spawnDrip(particlesRef.current, e.clientX, e.clientY);
     }
     window.addEventListener("mousemove", onMove);
     return () => window.removeEventListener("mousemove", onMove);
   }, []);
 
-  // Click / mouseup bursts
+  // Click bursts — throttled to prevent lag on rapid clicking
   useEffect(() => {
     function onClick(e: MouseEvent) {
       if (!enabledRef.current) return;
-      spawnBurst(particlesRef.current, e.clientX, e.clientY, 55, true);
-      if (Math.random() < 0.15) {
+      const now = Date.now();
+      if (now - lastBurstRef.current < 150) return;
+      lastBurstRef.current = now;
+      spawnBurst(particlesRef.current, e.clientX, e.clientY, 15, true);
+      if (Math.random() < 0.4) {
         unicornsRef.current.push({
           x: e.clientX + (Math.random() - 0.5) * 40,
           y: e.clientY,
           vy: -(Math.random() * 1.5 + 1.2),
           life: 1,
           size: Math.round(Math.random() * 20 + 28),
+          emoji: EMOJIS[Math.floor(Math.random() * EMOJIS.length)],
         });
       }
     }
-    function onMouseUp(e: MouseEvent) {
-      if (!enabledRef.current) return;
-      spawnBurst(particlesRef.current, e.clientX, e.clientY, 30, true);
-    }
     window.addEventListener("click", onClick);
-    window.addEventListener("mouseup", onMouseUp);
-    return () => {
-      window.removeEventListener("click", onClick);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
+    return () => window.removeEventListener("click", onClick);
   }, []);
 
   return <canvas ref={canvasRef} style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999 }} />;
