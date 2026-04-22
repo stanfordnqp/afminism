@@ -55,6 +55,7 @@ export default function App() {
   const [figureUrl, setFigureUrl] = useState<string | null>(null);
   const [figureBlob, setFigureBlob] = useState<Blob | null>(null);
   const [generatingFigure, setGeneratingFigure] = useState(false);
+  const [loadingFiles, setLoadingFiles] = useState<{ done: number; total: number } | null>(null);
   const [sharingState, setSharingState] = useState<"idle" | "uploading" | "copied" | "error" | "full">("idle");
   const [viewMode, setViewMode] = useState<"grid" | "psd">("grid");
   const [psdFigureSize, setPsdFigureSize] = useState<{ w: number; h: number }>({ w: 900, h: 560 });
@@ -174,8 +175,10 @@ export default function App() {
       (f) => f.name.toLowerCase().endsWith(".tiff") || f.name.toLowerCase().endsWith(".tif")
     );
     if (!arr.length) return;
+    setLoadingFiles({ done: 0, total: arr.length });
     const newScans: ScanRecord[] = [];
-    for (const file of arr) {
+    for (let i = 0; i < arr.length; i++) {
+      const file = arr[i];
       try {
         const buf = await file.arrayBuffer();
         const { data, side, scanUm, meta } = parseParkTiff(buf, file.name);
@@ -186,7 +189,9 @@ export default function App() {
         console.error(`Failed to load ${file.name}:`, e);
         alert(`Could not parse ${file.name}:\n${e}`);
       }
+      setLoadingFiles({ done: i + 1, total: arr.length });
     }
+    setLoadingFiles(null);
     if (newScans.length) {
       setScans((s) => [...s, ...newScans]);
       // Mark new scans for sparkle glow, clear after 3s
@@ -216,6 +221,10 @@ export default function App() {
   function removeCard(id: string) {
     setScans((s) => s.filter((r) => r.id !== id));
     if (expandedId === id) setExpandedId(null);
+  }
+  function clearAllScans() {
+    setScans([]);
+    setExpandedId(null);
   }
   function labelCard(id: string, label: string) { setScans((s) => s.map((r) => r.id === id ? { ...r, label } : r)); }
   function rotateCard(id: string) {
@@ -265,13 +274,19 @@ export default function App() {
 
     const cols = opts.columns;
     const rows = Math.ceil(visible.length / cols);
-    const scanSize = 700;
-    const titleH = 36;
-    const statsH = 46;
-    const gap = 20;
-    const padding = 24;
-    const colorbarW = 62;
-    const colorbarGap = 8;
+
+    // SCAN_PX is the actual output pixel size of each scan subplot.
+    // Total figure ≈ cols×SCAN_PX wide × rows×SCAN_PX tall.
+    // k scales all layout elements (gaps, fonts, colorbar) proportionally.
+    const SCAN_PX = 1200;
+    const k = SCAN_PX / 700;
+    const scanSize = SCAN_PX;
+    const titleH = Math.round(36 * k);
+    const statsH = Math.round(46 * k);
+    const gap = Math.round(20 * k);
+    const padding = Math.round(24 * k);
+    const colorbarW = Math.round(62 * k);
+    const colorbarGap = Math.round(8 * k);
     const psdH = opts.showPsd ? Math.round(scanSize / 2) : 0;
 
     const cellW = scanSize + colorbarGap + colorbarW;
@@ -282,17 +297,15 @@ export default function App() {
     if (opts.doLines) procParts.push("Row leveling");
     if (opts.doClip) procParts.push(`Color range ±${opts.climSigma}σ`);
     const procText = procParts.join("  ·  ");
-    const footerH = 42;
+    const footerH = Math.round(42 * k);
 
     const W = cols * cellW + (cols - 1) * gap + 2 * padding;
     const H = rows * cellH + (rows - 1) * gap + 2 * padding + footerH;
 
-    const scale = 2;
     const canvas = document.createElement("canvas");
-    canvas.width = W * scale;
-    canvas.height = H * scale;
+    canvas.width = W;
+    canvas.height = H;
     const ctx = canvas.getContext("2d")!;
-    ctx.scale(scale, scale);
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, W, H);
 
@@ -306,25 +319,29 @@ export default function App() {
       for (let j = 0; j < r.z.length; j++) if (Math.abs(r.z[j]) > maxAbs) maxAbs = Math.abs(r.z[j]);
       const lim = opts.doClip ? opts.climSigma * r.rmsClipped : maxAbs || 1;
 
-      const scanCanvas = renderScanForExport(r.z, r.side, r.scanUm, -lim, lim, opts.doClip, scanSize * scale, opts.colormap);
+      const scanCanvas = renderScanForExport(r.z, r.side, r.scanUm, -lim, lim, opts.doClip, scanSize, opts.colormap);
       ctx.drawImage(scanCanvas, x, y + titleH, scanSize, scanSize);
 
+      // drawColorbar uses hardcoded base-700 pixel sizes; scale context locally
       ctx.save();
       ctx.translate(x + scanSize + colorbarGap, y + titleH);
-      drawColorbar(ctx, -lim, lim, colorbarW, scanSize, false, opts.colormap);
+      ctx.scale(k, k);
+      drawColorbar(ctx, -lim, lim, 62, 700, false, opts.colormap);
       ctx.restore();
 
       ctx.fillStyle = "#111";
-      ctx.font = "bold 18px sans-serif";
+      ctx.font = `bold ${Math.round(18 * k)}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(r.label, x + cellW / 2, y + titleH / 2);
 
       if (opts.showPsd && r.psd) {
         const psdY = y + titleH + scanSize;
+        // drawPsd uses hardcoded margin/font sizes; scale context locally
         ctx.save();
         ctx.translate(x, psdY);
-        drawPsd(ctx, cellW, psdH, [{ freqs: r.psd.freqs, power: r.psd.power, color: "#2196f3", label: r.label }], true);
+        ctx.scale(k, k);
+        drawPsd(ctx, cellW / k, psdH / k, [{ freqs: r.psd.freqs, power: r.psd.power, color: "#2196f3", label: r.label }], true);
         ctx.restore();
       }
 
@@ -333,14 +350,14 @@ export default function App() {
       parts.push(`PtP = ${fmt(r.ptp)} nm`);
       const statsBaseY = y + titleH + scanSize + psdH;
       ctx.fillStyle = "#444";
-      ctx.font = "13px Arial, sans-serif";
+      ctx.font = `${Math.round(13 * k)}px Arial, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      ctx.fillText(parts.join("   "), x + cellW / 2, statsBaseY + 7);
+      ctx.fillText(parts.join("   "), x + cellW / 2, statsBaseY + Math.round(7 * k));
       const fileMeta = r.filename + (r.meta ? " · " + r.meta : "");
       ctx.fillStyle = "#aaa";
-      ctx.font = "10px Arial, sans-serif";
-      ctx.fillText(fileMeta, x + cellW / 2, statsBaseY + 26);
+      ctx.font = `${Math.round(10 * k)}px Arial, sans-serif`;
+      ctx.fillText(fileMeta, x + cellW / 2, statsBaseY + Math.round(26 * k));
     });
 
     // footer
@@ -348,20 +365,20 @@ export default function App() {
     ctx.strokeStyle = "#e0e0e0";
     ctx.lineWidth = 0.5;
     ctx.beginPath();
-    ctx.moveTo(padding, footerY + 6); ctx.lineTo(W - padding, footerY + 6);
+    ctx.moveTo(padding, footerY + Math.round(6 * k)); ctx.lineTo(W - padding, footerY + Math.round(6 * k));
     ctx.stroke();
     if (procText) {
       ctx.fillStyle = "#aaa";
-      ctx.font = "11px Arial, sans-serif";
+      ctx.font = `${Math.round(11 * k)}px Arial, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      ctx.fillText(procText, W / 2, footerY + 12);
+      ctx.fillText(procText, W / 2, footerY + Math.round(12 * k));
     }
     ctx.fillStyle = "#c0c0c0";
-    ctx.font = "italic 10px Arial, sans-serif";
+    ctx.font = `italic ${Math.round(10 * k)}px Arial, sans-serif`;
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
-    ctx.fillText("afminism", W - padding, H - 6);
+    ctx.fillText("afminism", W - padding, H - Math.round(6 * k));
 
     canvas.toBlob((blob) => {
       if (!blob) return;
@@ -476,6 +493,14 @@ export default function App() {
                       : sharingState === "full" ? "Storage full"
                       : "Share"}
                   </button>
+                  <button
+                    className="topbar-btn danger"
+                    onClick={clearAllScans}
+                    title="Remove all scans"
+                  >
+                    <TrashIcon />
+                    Clear all
+                  </button>
                 </div>
               )}
             </div>
@@ -577,6 +602,14 @@ export default function App() {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* ── loading banner ── */}
+      {loadingFiles && (
+        <div className="loading-banner">
+          <span className="loading-spinner" />
+          Processing {loadingFiles.done} / {loadingFiles.total} file{loadingFiles.total !== 1 ? "s" : ""}…
+        </div>
       )}
 
       {/* ── floating add button ── */}
@@ -836,47 +869,45 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
   }
 
   function buildFigureCanvas(): HTMLCanvasElement {
-    const scanSize = 700;
-    const titleH = 40;
-    const statsH = 46;
-    const pad = 20;
-    const colorbarW = 62;
-    const colorbarGap = 8;
+    const SCAN_PX = 1200;
+    const k = SCAN_PX / 700;
+    const scanSize = SCAN_PX;
+    const titleH = Math.round(40 * k);
+    const statsH = Math.round(46 * k);
+    const pad = Math.round(20 * k);
+    const colorbarW = Math.round(62 * k);
+    const colorbarGap = Math.round(8 * k);
     const psdW = opts.showPsd ? Math.round(scanSize * 2 / 3) : 0;
-    const psdGap = opts.showPsd ? 16 : 0;
+    const psdGap = opts.showPsd ? Math.round(16 * k) : 0;
 
     const procParts: string[] = [];
     if (opts.doPoly) procParts.push(`Poly leveling order ${opts.polyOrder} (σ = ${opts.polySigma})`);
     if (opts.doLines) procParts.push("Row leveling");
     if (opts.doClip) procParts.push(`Color range ±${opts.climSigma}σ`);
     const procText = procParts.join("  ·  ");
-    const footerH = 42;
+    const footerH = Math.round(42 * k);
 
-    const subTitleHCalc = opts.showPsd ? 22 : 0;
+    const subTitleHCalc = opts.showPsd ? Math.round(22 * k) : 0;
     const W = 2 * pad + scanSize + colorbarGap + colorbarW + psdGap + psdW;
     const H = 2 * pad + titleH + subTitleHCalc + scanSize + statsH + footerH;
-    const scale = 2;
     const c = document.createElement("canvas");
-    c.width = W * scale; c.height = H * scale;
+    c.width = W; c.height = H;
     const ctx = c.getContext("2d")!;
-    ctx.scale(scale, scale);
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, W, H);
 
     const scanBlockW = scanSize + colorbarGap + colorbarW;
     const subTitleH = subTitleHCalc;
 
-    // Main title: centered over whole figure when PSD present, else over scan block
     ctx.fillStyle = "#111";
-    ctx.font = "bold 20px sans-serif";
+    ctx.font = `bold ${Math.round(20 * k)}px sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(record.label, W / 2, pad + titleH / 2);
 
-    // Subtitles when PSD is shown
     if (opts.showPsd) {
       ctx.fillStyle = "#333";
-      ctx.font = "bold 15px Arial, sans-serif";
+      ctx.font = `bold ${Math.round(15 * k)}px Arial, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("Scan", pad + scanBlockW / 2, pad + titleH + subTitleH / 2);
@@ -886,12 +917,14 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
 
     const contentY = pad + titleH + subTitleH;
 
-    const scanCvs = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, scanSize * scale, opts.colormap);
+    const scanCvs = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, scanSize, opts.colormap);
     ctx.drawImage(scanCvs, pad, contentY, scanSize, scanSize);
 
+    // drawColorbar uses hardcoded base-700 pixel sizes; scale context locally
     ctx.save();
     ctx.translate(pad + scanSize + colorbarGap, contentY);
-    drawColorbar(ctx, -lim, lim, colorbarW, scanSize, false, opts.colormap);
+    ctx.scale(k, k);
+    drawColorbar(ctx, -lim, lim, 62, 700, false, opts.colormap);
     ctx.restore();
 
     const parts = [`${record.scanUm[0]}×${record.scanUm[1]} µm`, `Rq = ${fmt(record.rms)} nm`];
@@ -899,20 +932,22 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
     parts.push(`PtP = ${fmt(record.ptp)} nm`);
     const statsBaseY = contentY + scanSize;
     ctx.fillStyle = "#444";
-    ctx.font = "13px Arial, sans-serif";
+    ctx.font = `${Math.round(13 * k)}px Arial, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText(parts.join("   "), pad + scanBlockW / 2, statsBaseY + 7);
+    ctx.fillText(parts.join("   "), pad + scanBlockW / 2, statsBaseY + Math.round(7 * k));
     const fileMeta = record.filename + (record.meta ? " · " + record.meta : "");
     ctx.fillStyle = "#aaa";
-    ctx.font = "10px Arial, sans-serif";
-    ctx.fillText(fileMeta, pad + scanBlockW / 2, statsBaseY + 26);
+    ctx.font = `${Math.round(10 * k)}px Arial, sans-serif`;
+    ctx.fillText(fileMeta, pad + scanBlockW / 2, statsBaseY + Math.round(26 * k));
 
     if (opts.showPsd && record.psd) {
       const psdX = pad + scanBlockW + psdGap;
+      // drawPsd uses hardcoded margin/font sizes; scale context locally
       ctx.save();
       ctx.translate(psdX, contentY);
-      drawPsd(ctx, psdW, scanSize, [{ freqs: record.psd.freqs, power: record.psd.power, color: "#2196f3", label: "" }], true);
+      ctx.scale(k, k);
+      drawPsd(ctx, psdW / k, scanSize / k, [{ freqs: record.psd.freqs, power: record.psd.power, color: "#2196f3", label: "" }], true);
       ctx.restore();
     }
 
@@ -920,20 +955,20 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
     ctx.strokeStyle = "#e0e0e0";
     ctx.lineWidth = 0.5;
     ctx.beginPath();
-    ctx.moveTo(pad, footerY + 6); ctx.lineTo(W - pad, footerY + 6);
+    ctx.moveTo(pad, footerY + Math.round(6 * k)); ctx.lineTo(W - pad, footerY + Math.round(6 * k));
     ctx.stroke();
     if (procText) {
       ctx.fillStyle = "#aaa";
-      ctx.font = "11px Arial, sans-serif";
+      ctx.font = `${Math.round(11 * k)}px Arial, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      ctx.fillText(procText, W / 2, footerY + 12);
+      ctx.fillText(procText, W / 2, footerY + Math.round(12 * k));
     }
     ctx.fillStyle = "#c0c0c0";
-    ctx.font = "italic 10px Arial, sans-serif";
+    ctx.font = `italic ${Math.round(10 * k)}px Arial, sans-serif`;
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
-    ctx.fillText("afminism", W - pad, H - 6);
+    ctx.fillText("afminism", W - pad, H - Math.round(6 * k));
 
     return c;
   }
@@ -1151,6 +1186,14 @@ function SidebarToggleIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
       <rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/>
       <line x1="5.5" y1="2.5" x2="5.5" y2="13.5"/>
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M2 4h12M6 4V2h4v2M5 4v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4"/>
     </svg>
   );
 }
