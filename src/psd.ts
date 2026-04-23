@@ -99,19 +99,23 @@ export function computePSD(
   const binSum = new Float64Array(nBins + 1);
   const binCount = new Int32Array(nBins + 1);
 
-  // Physical frequency ratio: dy/dx handles non-square pixels
   const dx = scanUm[0] / N;
   const dy = scanUm[1] / N;
-  const ratio = dy / dx; // scale ky axis to match kx units
+  const df = 1 / scanUm[0]; // frequency bin width (µm⁻¹)
 
   for (let i = 0; i < N; i++) {
     const fi = ((i + half) % N) - half; // centered freq index
     for (let j = 0; j < N; j++) {
       const fj = ((j + half) % N) - half;
-      const r = Math.sqrt(fi * fi * ratio * ratio + fj * fj);
-      const ri = Math.round(r);
+      // Physical spatial frequencies (µm⁻¹)
+      const fx = fj / scanUm[0];
+      const fy = fi / scanUm[1];
+      const fr = Math.sqrt(fx * fx + fy * fy);
+      const ri = Math.round(fr / df);
       if (ri < 1 || ri > nBins) continue;
-      const p = (re[i * N + j] * re[i * N + j] + im[i * N + j] * im[i * N + j]) / N2;
+      // Correctly normalized 2D PSD: S_2D = (dx·dy / N²) · |F|²
+      // Units: µm² · nm² = nm²·µm²
+      const p = (dx * dy / N2) * (re[i * N + j] * re[i * N + j] + im[i * N + j] * im[i * N + j]);
       binSum[ri] += p;
       binCount[ri]++;
     }
