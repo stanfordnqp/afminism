@@ -46,6 +46,30 @@ describe("computePSD", () => {
     expect(relErr).toBeLessThan(0.25);
   });
 
+  it("rectangular scans: rotation symmetry (PSD of z⟂ at swapped scanUm matches z)", () => {
+    // Transposing z and swapping scanUm should give the same radial PSD —
+    // the radial average is rotation-invariant up to numerical noise.
+    const N = 64;
+    const rng = makeRng(11);
+    const z = new Float32Array(N * N).map(() => (rng() - 0.5) * 10);
+    const zT = new Float32Array(N * N);
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) zT[j * N + i] = z[i * N + j];
+
+    const a = computePSD(z, N, [5, 10]);
+    const b = computePSD(zT, N, [10, 5]);
+
+    expect(a.power.length).toBe(b.power.length);
+    // Compare median ratio across non-zero bins
+    const ratios: number[] = [];
+    for (let i = 0; i < a.power.length; i++) {
+      if (a.power[i] > 0 && b.power[i] > 0) ratios.push(a.power[i] / b.power[i]);
+    }
+    ratios.sort((x, y) => x - y);
+    const median = ratios[Math.floor(ratios.length / 2)];
+    expect(median).toBeGreaterThan(0.9);
+    expect(median).toBeLessThan(1.1);
+  });
+
   it("normalization is scan-size-independent: Parseval holds at 5 µm and 10 µm", () => {
     // The dx·dy factor in S_2D = (dx·dy/N²)|F|² must scale with scan size so
     // that the integral always recovers σ². This test catches missing or

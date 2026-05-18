@@ -95,13 +95,19 @@ export function computePSD(
 
   // Normalized power (fftshifted on-the-fly: bin (i,j) → (i+N/2)%N, (j+N/2)%N)
   const half = N / 2;
-  const nBins = half; // radial bins 1..N/2
-  const binSum = new Float64Array(nBins + 1);
-  const binCount = new Int32Array(nBins + 1);
-
   const dx = scanUm[0] / N;
   const dy = scanUm[1] / N;
-  const df = 1 / scanUm[0]; // frequency bin width (µm⁻¹)
+
+  // Bin width: finer of the two axis spacings.
+  // Extend bin range to the LARGER axis Nyquist so we don't truncate the
+  // spectrum in the more-finely-sampled direction. Annuli beyond the smaller
+  // Nyquist are partial (only a slice contributes), so the radial mean there
+  // samples a subset of angles; this is unavoidable for rectangular scans.
+  const df = 1 / Math.max(scanUm[0], scanUm[1]);
+  const fNyq = N / (2 * Math.min(scanUm[0], scanUm[1]));
+  const nBins = Math.ceil(fNyq / df);
+  const binSum = new Float64Array(nBins + 1);
+  const binCount = new Int32Array(nBins + 1);
 
   for (let i = 0; i < N; i++) {
     const fi = ((i + half) % N) - half; // centered freq index
@@ -125,7 +131,7 @@ export function computePSD(
   const freqs = new Float32Array(nBins);
   const power = new Float32Array(nBins);
   for (let r = 1; r <= nBins; r++) {
-    freqs[r - 1] = r / scanUm[0]; // 1/µm
+    freqs[r - 1] = r * df; // 1/µm
     power[r - 1] = binCount[r] > 0 ? binSum[r] / binCount[r] : 0;
   }
 

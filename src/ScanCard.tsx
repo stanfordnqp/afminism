@@ -67,7 +67,7 @@ export default function ScanCard({
       ctx.clearRect(0, 0, sbCanvas.width, sbCanvas.height);
       ctx.save();
       ctx.scale(dpr, dpr);
-      drawScaleBar(ctx, record.scanUm[0], w);
+      drawScaleBar(ctx, record.scanUm[0], w, h);
       ctx.restore();
     }
 
@@ -128,7 +128,11 @@ export default function ScanCard({
             }}
             onMouseLeave={() => setCursorH(null)}
           >
-            <canvas ref={dataCanvasRef} className="data-canvas" />
+            <canvas
+              ref={dataCanvasRef}
+              className="data-canvas"
+              style={{ aspectRatio: `${record.scanUm[0]} / ${record.scanUm[1]}` }}
+            />
             <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
             <button className="canvas-rotate-btn" onClick={(e) => { e.stopPropagation(); onRotate(); }} onDoubleClick={(e) => e.stopPropagation()} title="Rotate 90°">↻</button>
             {cursorH && (

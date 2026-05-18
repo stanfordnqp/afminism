@@ -98,25 +98,30 @@ export function toImageData(
 
 export function drawScaleBar(
   ctx: CanvasRenderingContext2D,
-  scanUm: number,
-  canvasSize: number
+  scanUmX: number,
+  canvasW: number,
+  canvasH: number = canvasW,
 ): void {
   const frac = 0.2;
-  const raw = scanUm * frac;
+  const raw = scanUmX * frac;
   const magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
   const barUm = Math.round(raw / magnitude) * magnitude;
-  const barPx = (barUm / scanUm) * canvasSize;
+  const barPx = (barUm / scanUmX) * canvasW;
 
-  const marginX = canvasSize * 0.05;
-  const marginY = canvasSize * 0.06;
-  const x1 = canvasSize - marginX - barPx;
-  const x2 = canvasSize - marginX;
-  const yLine = canvasSize - marginY;
-
-  const padX = canvasSize * 0.015;
-  const padAbove = canvasSize * 0.04;
-  const padBelow = canvasSize * 0.015;
-  const textY = yLine - canvasSize * 0.012;
+  // Margins are referenced to the smaller side so the bar always sits in the
+  // bottom-right corner — same visual offset whether the scan is square,
+  // tall, or wide. Using canvasH would push the bar far from the corner
+  // for tall scans.
+  const ref = Math.min(canvasW, canvasH);
+  const marginX = ref * 0.05;
+  const marginY = ref * 0.05;
+  const x1 = canvasW - marginX - barPx;
+  const x2 = canvasW - marginX;
+  const yLine = canvasH - marginY;
+  const padX = ref * 0.015;
+  const padAbove = ref * 0.04;
+  const padBelow = ref * 0.015;
+  const textY = yLine - ref * 0.012;
   const boxTop = textY - padAbove;
   const boxH = yLine + padBelow - boxTop;
 
@@ -136,7 +141,7 @@ export function drawScaleBar(
 
   const label = barUm < 1 ? `${barUm * 1000} nm` : `${barUm} \u00b5m`;
   ctx.fillStyle = "white";
-  ctx.font = `normal bold ${Math.round(canvasSize * 0.03)}px Arial, "Helvetica Neue", sans-serif`;
+  ctx.font = `normal bold ${Math.round(ref * 0.03)}px Arial, "Helvetica Neue", sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
   ctx.fillText(label, (x1 + x2) / 2, textY);
@@ -150,20 +155,22 @@ export function renderScanForExport(
   vmin: number,
   vmax: number,
   doClip: boolean,
-  exportSize: number,
-  colormap: ColormapName = "afmhot"
+  exportW: number,
+  colormap: ColormapName = "afmhot",
 ): HTMLCanvasElement {
+  // Output canvas matches the physical aspect ratio of the scan.
+  const exportH = Math.round(exportW * (scanUm[1] / scanUm[0]));
   const img = toImageData(z, side, vmin, vmax, doClip, colormap);
   const src = document.createElement("canvas");
   src.width = side; src.height = side;
   src.getContext("2d")!.putImageData(img, 0, 0);
 
   const out = document.createElement("canvas");
-  out.width = exportSize; out.height = exportSize;
+  out.width = exportW; out.height = exportH;
   const ctx = out.getContext("2d")!;
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(src, 0, 0, exportSize, exportSize);
-  drawScaleBar(ctx, scanUm[0], exportSize);
+  ctx.drawImage(src, 0, 0, exportW, exportH);
+  drawScaleBar(ctx, scanUm[0], exportW, exportH);
   return out;
 }
 
