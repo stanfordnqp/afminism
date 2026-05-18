@@ -1,7 +1,7 @@
 // Dev-only: load synthetic test .npy files served by the Vite test-data plugin.
 // Each file is a 256×256 float32 array (5×5 µm scan).
 
-const TEST_FILES: Array<{ filename: string; label: string }> = [
+const TEST_FILES: Array<{ filename: string; label: string; scanUm?: [number, number] }> = [
   { filename: "01_white_noise.npy",        label: "White noise" },
   { filename: "02_checkerboard.npy",       label: "Checkerboard" },
   { filename: "03_1d_grating.npy",         label: "1D grating" },
@@ -10,6 +10,35 @@ const TEST_FILES: Array<{ filename: string; label: string }> = [
   { filename: "06_tilt_plus_noise.npy",    label: "Tilt + noise" },
   { filename: "07_parabola_pink_dirt.npy", label: "Parabola + dirt" },
 ];
+
+// Synthetic patterns generated at runtime — used to verify aspect-ratio handling.
+// A grid of circles in PHYSICAL space: when the display preserves scanUm aspect
+// they look circular; if the aspect is wrong they appear as ellipses.
+const SYNTHETIC: Array<{ label: string; scanUm: [number, number]; gen: (N: number, scanUm: [number, number]) => Float32Array }> = [
+  { label: "Circles square (5×5 µm)",  scanUm: [5, 5],  gen: makeCirclesPattern },
+  { label: "Circles tall (5×10 µm)",   scanUm: [5, 10], gen: makeCirclesPattern },
+  { label: "Circles wide (10×5 µm)",   scanUm: [10, 5], gen: makeCirclesPattern },
+];
+
+// Grid of circles spaced 1 µm apart with radius 0.4 µm. Defined in physical
+// coordinates so they always look round when the scan is displayed at its
+// real aspect ratio — and become squished ellipses if it isn't.
+function makeCirclesPattern(N: number, scanUm: [number, number]): Float32Array {
+  const data = new Float32Array(N * N);
+  const dx = scanUm[0] / N;
+  const dy = scanUm[1] / N;
+  const spacing = 1.0; // µm
+  const radius = 0.4;  // µm
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      const xMod = ((j * dx) % spacing) - spacing / 2;
+      const yMod = ((i * dy) % spacing) - spacing / 2;
+      const r = Math.sqrt(xMod * xMod + yMod * yMod);
+      data[i * N + j] = r < radius ? 5 : 0;
+    }
+  }
+  return data;
+}
 
 interface NpyResult {
   data: Float32Array;
@@ -62,11 +91,27 @@ export async function loadTestScans(): Promise<NpyResult[]> {
     results.push({ data, side, scanUm, filename: "example.tiff", label: "Example" });
   }
 
-  for (const { filename, label } of TEST_FILES) {
-    const res = await fetch(`/test-data/${filename}`);
+  for (const { filename, label, scanUm } of TEST_FILES) {
+    const res = await fetch(`${base}test-data/${filename}`);
     if (!res.ok) throw new Error(`Failed to fetch ${filename}: ${res.status}`);
     const buf = await res.arrayBuffer();
-    results.push(parseNpy(buf, filename, label));
+    const parsed = parseNpy(buf, filename, label);
+    if (scanUm) parsed.scanUm = scanUm;
+    results.push(parsed);
   }
+
+  // Synthetic aspect-ratio test patterns (no fetch, generated in JS)
+  // 2× the npy test resolution for crisper circle edges.
+  const SYNTHETIC_N = 512;
+  for (const { label, scanUm, gen } of SYNTHETIC) {
+    results.push({
+      data: gen(SYNTHETIC_N, scanUm),
+      side: SYNTHETIC_N,
+      scanUm,
+      filename: `synthetic_circles_${scanUm[0]}x${scanUm[1]}.npy`,
+      label,
+    });
+  }
+
   return results;
 }

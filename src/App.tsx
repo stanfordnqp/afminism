@@ -60,46 +60,29 @@ export default function App() {
   const [viewMode, setViewMode] = useState<"grid" | "psd">("grid");
   const [psdFigureSize, setPsdFigureSize] = useState<{ w: number; h: number }>({ w: 900, h: 560 });
   const [psdTitle, setPsdTitle] = useState("PSD Summary");
+  const [gridZoom, setGridZoom] = useState(1);
+  const [dropZoneH, setDropZoneH] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  // ── load from shared link or example scan on first mount ─────────────────
+  // ── load from shared link on first mount ─────────────────────────────────
   useEffect(() => {
     const hash = window.location.hash;
     const shareMatch = hash.match(/^#share\/([a-zA-Z0-9_-]+)$/);
-    if (shareMatch) {
-      const id = shareMatch[1];
-      window.history.replaceState(null, "", window.location.pathname);
-      downloadSession(id)
-        .then(({ scans, opts }) => {
-          setScans(scans);
-          setOpts(opts);
-        })
-        .catch((e) => {
-          console.error("Failed to load shared session:", e);
-          alert("Could not load shared session. The link may have expired.");
-        });
-      return;
-    }
-
-    const base = import.meta.env.BASE_URL ?? "/";
-    fetch(`${base}example.tiff`)
-      .then((r) => r.arrayBuffer())
-      .then((buf) => {
-        const { data, side, scanUm, meta } = parseParkTiff(buf, "example.tiff");
-        const exampleOpts: ProcessingOptions = { ...DEFAULT_OPTS, doClip: true, climSigma: 2 };
-        const z = reprocess(data, side, exampleOpts, 0);
-        const { rms, rmsClipped, ptp } = computeRms(z, exampleOpts.climSigma);
-        const psd = computePSD(z, side, scanUm);
-        const record: ScanRecord = {
-          id: uid(), filename: "example.tiff", label: "Example Scan",
-          zRaw: data, side, scanUm, rotation: 0, isExample: true,
-          z, rms, rmsClipped, ptp, psd, meta,
-        };
-        setScans([record]);
+    if (!shareMatch) return;
+    const id = shareMatch[1];
+    window.history.replaceState(null, "", window.location.pathname);
+    downloadSession(id)
+      .then(({ scans, opts }) => {
+        setScans(scans);
+        setOpts(opts);
       })
-      .catch((e) => console.warn("Could not load example scan:", e));
+      .catch((e) => {
+        console.error("Failed to load shared session:", e);
+        alert("Could not load shared session. The link may have expired.");
+      });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -137,6 +120,26 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [figureUrl]);
+
+  // ── grid view: track drop-zone size and bind pinch-zoom ───────────────────
+  useEffect(() => {
+    const el = dropZoneRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(() => setDropZoneH(el.clientHeight));
+    obs.observe(el);
+    setDropZoneH(el.clientHeight);
+    function onWheel(e: WheelEvent) {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const factor = Math.pow(1.15, -e.deltaY / 30);
+      setGridZoom((z) => Math.max(0.3, Math.min(6, z * factor)));
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => { obs.disconnect(); el.removeEventListener("wheel", onWheel); };
+  }, [viewMode, expandedId]);
+
+  // Reset zoom when scan count or column count changes — fit to viewport again
+  useEffect(() => { setGridZoom(1); }, [scans.length, opts.columns, opts.showPsd]);
 
   // ── processing ────────────────────────────────────────────────────────────
 
@@ -231,10 +234,13 @@ export default function App() {
     setScans((s) => s.map((r) => {
       if (r.id !== id) return r;
       const rotation = (r.rotation + 90) % 360;
+      // Each 90° rotation swaps physical width/height, which flips the aspect
+      // ratio and the x/y axes for downstream calcs (PSD, scale bar, display).
+      const scanUm: [number, number] = [r.scanUm[1], r.scanUm[0]];
       const z = reprocess(r.zRaw, r.side, opts, rotation);
       const { rms, rmsClipped, ptp } = computeRms(z, opts.climSigma);
-      const psd = computePSD(z, r.side, r.scanUm);
-      return { ...r, rotation, z, rms, rmsClipped, ptp, psd };
+      const psd = computePSD(z, r.side, scanUm);
+      return { ...r, rotation, scanUm, z, rms, rmsClipped, ptp, psd };
     }));
   }
 
@@ -275,22 +281,19 @@ export default function App() {
     const cols = opts.columns;
     const rows = Math.ceil(visible.length / cols);
 
-    // SCAN_PX is the actual output pixel size of each scan subplot.
-    // Total figure ≈ cols×SCAN_PX wide × rows×SCAN_PX tall.
-    // k scales all layout elements (gaps, fonts, colorbar) proportionally.
+    // SCAN_PX is the actual output pixel WIDTH of each scan subplot.
+    // Each scan's height = scanW · (scanUm[1] / scanUm[0]) so rectangular
+    // scans keep their physical aspect ratio in the figure.
     const SCAN_PX = 1200;
     const k = SCAN_PX / 700;
-    const scanSize = SCAN_PX;
+    const scanW = SCAN_PX;
     const titleH = Math.round(36 * k);
     const statsH = Math.round(46 * k);
     const gap = Math.round(20 * k);
     const padding = Math.round(24 * k);
     const colorbarW = Math.round(62 * k);
     const colorbarGap = Math.round(8 * k);
-    const psdH = opts.showPsd ? Math.round(scanSize / 2) : 0;
-
-    const cellW = scanSize + colorbarGap + colorbarW;
-    const cellH = scanSize + titleH + statsH + psdH;
+    const psdH = opts.showPsd ? Math.round(scanW * 0.6) : 0;
 
     const procParts: string[] = [];
     if (opts.doPoly) procParts.push(`Poly leveling order ${opts.polyOrder} (σ = ${opts.polySigma})`);
@@ -299,8 +302,28 @@ export default function App() {
     const procText = procParts.join("  ·  ");
     const footerH = Math.round(42 * k);
 
+    const cellW = scanW + colorbarGap + colorbarW;
+
+    // Per-row scan height = max height across cards in that row
+    const rowScanH: number[] = [];
+    for (let r = 0; r < rows; r++) {
+      let maxH = 0;
+      for (let c = 0; c < cols; c++) {
+        const idx = r * cols + c;
+        if (idx >= visible.length) break;
+        const sc = visible[idx];
+        const h = Math.round(scanW * (sc.scanUm[1] / sc.scanUm[0]));
+        if (h > maxH) maxH = h;
+      }
+      rowScanH.push(maxH);
+    }
+    const rowH = rowScanH.map((h) => h + titleH + statsH + psdH);
+    const rowY: number[] = [];
+    let yAcc = padding;
+    for (let r = 0; r < rows; r++) { rowY.push(yAcc); yAcc += rowH[r] + (r < rows - 1 ? gap : 0); }
+
     const W = cols * cellW + (cols - 1) * gap + 2 * padding;
-    const H = rows * cellH + (rows - 1) * gap + 2 * padding + footerH;
+    const H = yAcc + padding + footerH;
 
     const canvas = document.createElement("canvas");
     canvas.width = W;
@@ -313,20 +336,22 @@ export default function App() {
       const col = i % cols;
       const row = Math.floor(i / cols);
       const x = padding + col * (cellW + gap);
-      const y = padding + row * (cellH + gap);
+      const y = rowY[row];
+      const scanH = Math.round(scanW * (r.scanUm[1] / r.scanUm[0]));
+      // Top-align scan within its row (rows can have heterogeneous heights)
 
       let maxAbs = 0;
       for (let j = 0; j < r.z.length; j++) if (Math.abs(r.z[j]) > maxAbs) maxAbs = Math.abs(r.z[j]);
       const lim = opts.doClip ? opts.climSigma * r.rmsClipped : maxAbs || 1;
 
-      const scanCanvas = renderScanForExport(r.z, r.side, r.scanUm, -lim, lim, opts.doClip, scanSize, opts.colormap);
-      ctx.drawImage(scanCanvas, x, y + titleH, scanSize, scanSize);
+      const scanCanvas = renderScanForExport(r.z, r.side, r.scanUm, -lim, lim, opts.doClip, scanW, opts.colormap);
+      ctx.drawImage(scanCanvas, x, y + titleH, scanW, scanH);
 
-      // drawColorbar uses hardcoded base-700 pixel sizes; scale context locally
+      // Colorbar height matches scan height. drawColorbar uses base-700 sizes.
       ctx.save();
-      ctx.translate(x + scanSize + colorbarGap, y + titleH);
+      ctx.translate(x + scanW + colorbarGap, y + titleH);
       ctx.scale(k, k);
-      drawColorbar(ctx, -lim, lim, 62, 700, false, opts.colormap);
+      drawColorbar(ctx, -lim, lim, 62, scanH / k, false, opts.colormap);
       ctx.restore();
 
       ctx.fillStyle = "#111";
@@ -335,9 +360,10 @@ export default function App() {
       ctx.textBaseline = "middle";
       ctx.fillText(r.label, x + cellW / 2, y + titleH / 2);
 
+      // PSD sits below the row's max scan height so all PSD panels in a row align
+      const rowMaxScanH = rowScanH[row];
       if (opts.showPsd && r.psd) {
-        const psdY = y + titleH + scanSize;
-        // drawPsd uses hardcoded margin/font sizes; scale context locally
+        const psdY = y + titleH + rowMaxScanH;
         ctx.save();
         ctx.translate(x, psdY);
         ctx.scale(k, k);
@@ -348,7 +374,7 @@ export default function App() {
       const parts = [`${r.scanUm[0]}×${r.scanUm[1]} µm`, `Rq = ${fmt(r.rms)} nm`];
       if (opts.doClip) parts.push(`Rq* = ${fmt(r.rmsClipped)} nm`);
       parts.push(`PtP = ${fmt(r.ptp)} nm`);
-      const statsBaseY = y + titleH + scanSize + psdH;
+      const statsBaseY = y + titleH + rowMaxScanH + psdH;
       ctx.fillStyle = "#444";
       ctx.font = `${Math.round(13 * k)}px Arial, sans-serif`;
       ctx.textAlign = "center";
@@ -414,6 +440,20 @@ export default function App() {
 
   const draggingRecord = scans.find((s) => s.id === dragging);
   const expandedRecord = expandedId ? scans.find((s) => s.id === expandedId) ?? null : null;
+
+  // Compute card canvas WIDTH so the grid fits vertically at zoom=1.
+  // Total card height = scanH + (PSD panel = 0.6·width if on) + chrome.
+  // scanH = width · maxAspect across scans so the tallest tile still fits.
+  const gridRows = scans.length > 0 ? Math.ceil(scans.length / opts.columns) : 1;
+  const chromeOverhead = 90 + 16; // header + stats + filename + inter-card gap
+  const psdFactor = opts.showPsd ? 0.6 : 0; // matches CSS .psd-panel height
+  const maxAspect = scans.length > 0
+    ? Math.max(...scans.map((s) => s.scanUm[1] / s.scanUm[0]))
+    : 1;
+  const availPerRow = (dropZoneH - 32) / gridRows - chromeOverhead;
+  // availPerRow = baseW · maxAspect + baseW · psdFactor → baseW = availPerRow / (maxAspect + psdFactor)
+  const baseCanvasSize = Math.max(180, Math.floor(availPerRow / (maxAspect + psdFactor)));
+  const cardCanvasSize = Math.round(baseCanvasSize * gridZoom);
 
   return (
     <DndContext sensors={sensors} onDragStart={onDndStart} onDragEnd={onDndEnd}>
@@ -509,6 +549,7 @@ export default function App() {
               <PsdSummaryView scans={scans} onDrop={loadFiles} onSizeChange={(w, h) => setPsdFigureSize({ w, h })} title={psdTitle} onTitleChange={setPsdTitle} />
             ) : (
               <div
+                ref={dropZoneRef}
                 className={`drop-zone${dragOver ? " drag-over" : ""}`}
                 onDragEnter={onDragEnter}
                 onDragLeave={onDragLeave}
@@ -522,30 +563,31 @@ export default function App() {
                     <button className="add-files-btn-empty" onClick={() => fileInputRef.current?.click()}>
                       Browse files
                     </button>
-                    {import.meta.env.DEV && (
-                      <button
-                        className="add-files-btn-empty dev-load-btn"
-                        onClick={async () => {
-                          try {
-                            const results = await loadTestScans();
-                            const newScans = results.map(({ data, side, scanUm, filename, label }) =>
-                              buildRecord(uid(), filename, label, data, side, scanUm, 0, opts)
-                            );
-                            setScans(newScans);
-                          } catch (e) {
-                            console.error("Failed to load test scans:", e);
-                          }
-                        }}
-                      >
-                        Load test scans (dev)
-                      </button>
-                    )}
+                    <button
+                      className="add-files-btn-empty dev-load-btn"
+                      onClick={async () => {
+                        try {
+                          const results = await loadTestScans();
+                          const newScans = results.map(({ data, side, scanUm, filename, label }) =>
+                            buildRecord(uid(), filename, label, data, side, scanUm, 0, opts)
+                          );
+                          setScans(newScans);
+                        } catch (e) {
+                          console.error("Failed to load example scans:", e);
+                        }
+                      }}
+                    >
+                      Load example scans
+                    </button>
                   </div>
                 )}
 
                 {scans.length > 0 && (
                   <SortableContext items={scans.map((s) => s.id)} strategy={rectSortingStrategy}>
-                    <div className="card-grid" style={{ "--cols": opts.columns } as React.CSSProperties}>
+                    <div className="card-grid" style={{
+                      "--cols": opts.columns,
+                      "--card-canvas-size": `${cardCanvasSize}px`,
+                    } as React.CSSProperties}>
                       {scans.map((r) => (
                         <ScanCard
                           key={r.id}
@@ -609,6 +651,27 @@ export default function App() {
         <div className="loading-banner">
           <span className="loading-spinner" />
           Processing {loadingFiles.done} / {loadingFiles.total} file{loadingFiles.total !== 1 ? "s" : ""}…
+        </div>
+      )}
+
+      {/* ── grid zoom controls (grid view only, when scans loaded) ── */}
+      {!expandedRecord && viewMode === "grid" && scans.length > 0 && (
+        <div className="grid-zoom-controls">
+          <button
+            className="icon-btn"
+            onClick={() => setGridZoom((z) => Math.min(6, z * 1.2))}
+            title="Zoom in"
+          >+</button>
+          <button
+            className="icon-btn"
+            onClick={() => setGridZoom((z) => Math.max(0.3, z / 1.2))}
+            title="Zoom out"
+          >−</button>
+          <button
+            className="icon-btn"
+            onClick={() => setGridZoom(1)}
+            title="Fit to view"
+          >⊡</button>
         </div>
       )}
 
@@ -779,7 +842,8 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
-  const [scanPx, setScanPx] = useState(0);
+  const areaRef = useRef<HTMLDivElement>(null);
+  const [areaSize, setAreaSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -806,14 +870,15 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
       if (!data || !sb) return;
       const dpr = window.devicePixelRatio || 1;
       const w = data.clientWidth;
-      if (!w) return;
+      const h = data.clientHeight;
+      if (!w || !h) return;
       sb.width = Math.round(w * dpr);
-      sb.height = Math.round(w * dpr);
+      sb.height = Math.round(h * dpr);
       const ctx = sb.getContext("2d")!;
       ctx.clearRect(0, 0, sb.width, sb.height);
       ctx.save();
       ctx.scale(dpr, dpr);
-      drawScaleBar(ctx, record.scanUm[0], w);
+      drawScaleBar(ctx, record.scanUm[0], w, h);
       ctx.restore();
     }
     const obs = new ResizeObserver(draw);
@@ -822,15 +887,33 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
     return () => obs.disconnect();
   }, [record.scanUm]);
 
-  // Track canvas pixel size so PSD can match width
+  // Track available area in the expanded view so we can size scan + PSD to fit
   useEffect(() => {
-    const wrap = canvasWrapRef.current;
-    if (!wrap) return;
-    const obs = new ResizeObserver(() => setScanPx(wrap.offsetWidth));
-    obs.observe(wrap);
-    setScanPx(wrap.offsetWidth);
+    const el = areaRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(() => {
+      setAreaSize({ w: el.clientWidth, h: el.clientHeight });
+    });
+    obs.observe(el);
+    setAreaSize({ w: el.clientWidth, h: el.clientHeight });
     return () => obs.disconnect();
   }, []);
+
+  // Compute scan dimensions to fit the available area without scrolling.
+  // Layout: [scan (W×H)] [colorbar 62] [gap 16] [PSD (H×H if shown)]  inside areaSize.
+  // PSD is square, sized to scan height. Pad inside the area.
+  const aspect = record.scanUm[0] / record.scanUm[1];
+  const colorbarSlot = 62 + 12; // colorbar width + gap to scan
+  const psdSlot = opts.showPsd ? 16 : 0; // gap to PSD; PSD width = scanH, added below
+  const innerW = Math.max(0, areaSize.w - 16);
+  const innerH = Math.max(0, areaSize.h - 16);
+  // scan_w + colorbar + (gap + scan_h) ≤ innerW   (psd_w = scan_h)
+  // scan_h * aspect + colorbarSlot + psdSlot + (opts.showPsd ? scan_h : 0) ≤ innerW
+  const horizDivisor = aspect + (opts.showPsd ? 1 : 0);
+  const fromW = (innerW - colorbarSlot - psdSlot) / horizDivisor;
+  const scanH = Math.max(80, Math.floor(Math.min(innerH, fromW)));
+  const scanW = Math.round(scanH * aspect);
+  const psdSide = scanH;
 
   function showToast(msg: string) {
     setToast(msg);
@@ -850,13 +933,15 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
   async function doDownload(type: "raw" | "processed") {
     setBusy(type);
     try {
+      // Use 1200 px width — height follows scan aspect inside renderScanForExport.
+      const exportW = 1200;
       let c: HTMLCanvasElement;
       if (type === "raw") {
         let rawMax = 0;
         for (let j = 0; j < record.zRaw.length; j++) if (Math.abs(record.zRaw[j]) > rawMax) rawMax = Math.abs(record.zRaw[j]);
-        c = renderScanForExport(record.zRaw, record.side, record.scanUm, -rawMax, rawMax, false, record.side, opts.colormap);
+        c = renderScanForExport(record.zRaw, record.side, record.scanUm, -rawMax, rawMax, false, exportW, opts.colormap);
       } else {
-        c = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, record.side, opts.colormap);
+        c = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, exportW, opts.colormap);
       }
       const a = document.createElement("a");
       a.href = c.toDataURL("image/png");
@@ -871,13 +956,15 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
   function buildFigureCanvas(): HTMLCanvasElement {
     const SCAN_PX = 1200;
     const k = SCAN_PX / 700;
-    const scanSize = SCAN_PX;
+    const scanW = SCAN_PX;
+    const scanH = Math.round(scanW * (record.scanUm[1] / record.scanUm[0]));
     const titleH = Math.round(40 * k);
     const statsH = Math.round(46 * k);
     const pad = Math.round(20 * k);
     const colorbarW = Math.round(62 * k);
     const colorbarGap = Math.round(8 * k);
-    const psdW = opts.showPsd ? Math.round(scanSize * 2 / 3) : 0;
+    // PSD panel: square sized to match scan height when present
+    const psdSide = opts.showPsd ? Math.min(scanH, scanW) : 0;
     const psdGap = opts.showPsd ? Math.round(16 * k) : 0;
 
     const procParts: string[] = [];
@@ -888,15 +975,15 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
     const footerH = Math.round(42 * k);
 
     const subTitleHCalc = opts.showPsd ? Math.round(22 * k) : 0;
-    const W = 2 * pad + scanSize + colorbarGap + colorbarW + psdGap + psdW;
-    const H = 2 * pad + titleH + subTitleHCalc + scanSize + statsH + footerH;
+    const W = 2 * pad + scanW + colorbarGap + colorbarW + psdGap + psdSide;
+    const H = 2 * pad + titleH + subTitleHCalc + scanH + statsH + footerH;
     const c = document.createElement("canvas");
     c.width = W; c.height = H;
     const ctx = c.getContext("2d")!;
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, W, H);
 
-    const scanBlockW = scanSize + colorbarGap + colorbarW;
+    const scanBlockW = scanW + colorbarGap + colorbarW;
     const subTitleH = subTitleHCalc;
 
     ctx.fillStyle = "#111";
@@ -912,25 +999,25 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
       ctx.textBaseline = "middle";
       ctx.fillText("Scan", pad + scanBlockW / 2, pad + titleH + subTitleH / 2);
       const psdX = pad + scanBlockW + psdGap;
-      ctx.fillText("Radial Power Spectral Density", psdX + psdW / 2, pad + titleH + subTitleH / 2);
+      ctx.fillText("Radial Power Spectral Density", psdX + psdSide / 2, pad + titleH + subTitleH / 2);
     }
 
     const contentY = pad + titleH + subTitleH;
 
-    const scanCvs = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, scanSize, opts.colormap);
-    ctx.drawImage(scanCvs, pad, contentY, scanSize, scanSize);
+    const scanCvs = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, scanW, opts.colormap);
+    ctx.drawImage(scanCvs, pad, contentY, scanW, scanH);
 
-    // drawColorbar uses hardcoded base-700 pixel sizes; scale context locally
+    // Colorbar height matches scan height
     ctx.save();
-    ctx.translate(pad + scanSize + colorbarGap, contentY);
+    ctx.translate(pad + scanW + colorbarGap, contentY);
     ctx.scale(k, k);
-    drawColorbar(ctx, -lim, lim, 62, 700, false, opts.colormap);
+    drawColorbar(ctx, -lim, lim, 62, scanH / k, false, opts.colormap);
     ctx.restore();
 
     const parts = [`${record.scanUm[0]}×${record.scanUm[1]} µm`, `Rq = ${fmt(record.rms)} nm`];
     if (opts.doClip) parts.push(`Rq* = ${fmt(record.rmsClipped)} nm`);
     parts.push(`PtP = ${fmt(record.ptp)} nm`);
-    const statsBaseY = contentY + scanSize;
+    const statsBaseY = contentY + scanH;
     ctx.fillStyle = "#444";
     ctx.font = `${Math.round(13 * k)}px Arial, sans-serif`;
     ctx.textAlign = "center";
@@ -943,11 +1030,10 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
 
     if (opts.showPsd && record.psd) {
       const psdX = pad + scanBlockW + psdGap;
-      // drawPsd uses hardcoded margin/font sizes; scale context locally
       ctx.save();
       ctx.translate(psdX, contentY);
       ctx.scale(k, k);
-      drawPsd(ctx, psdW / k, scanSize / k, [{ freqs: record.psd.freqs, power: record.psd.power, color: "#2196f3", label: "" }], true);
+      drawPsd(ctx, psdSide / k, psdSide / k, [{ freqs: record.psd.freqs, power: record.psd.power, color: "#2196f3", label: "" }], true);
       ctx.restore();
     }
 
@@ -1008,18 +1094,16 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
       </div>
 
       <div className="expanded-body" style={{
-        "--scan-h": opts.showPsd
-          ? "min(calc(100vh - 130px), calc((100vw - var(--sidebar-w, 260px) - 315px) * 0.6))"
-          : "min(calc(100vh - 130px), calc(100vw - var(--sidebar-w, 260px) - 299px))",
+        "--scan-h": `${scanH}px`,
       } as React.CSSProperties}>
-        <div className="expanded-canvas-area">
+        <div className="expanded-canvas-area" ref={areaRef}>
           <div className="expanded-content-row">
             {/* Scan + colorbar */}
             <div className="expanded-scan-row">
               <div
                 ref={canvasWrapRef}
                 className="card-canvas-wrap expanded-canvas-wrap"
-                style={{ position: "relative" }}
+                style={{ position: "relative", width: scanW, height: scanH }}
                 onMouseMove={(e) => {
                   const canvas = dataCanvasRef.current;
                   if (!canvas) return;
@@ -1032,7 +1116,10 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
                 }}
                 onMouseLeave={() => setCursorH(null)}
               >
-                <canvas ref={dataCanvasRef} className="data-canvas" />
+                <canvas
+                  ref={dataCanvasRef}
+                  className="data-canvas"
+                />
                 <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
                 <button className="canvas-rotate-btn" onClick={onRotate} title="Rotate 90° clockwise">↻</button>
                 {cursorH && (
@@ -1043,9 +1130,9 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
               </div>
               <Colorbar vmin={-lim} vmax={lim} expanded colormap={opts.colormap} />
             </div>
-            {/* PSD to the right */}
-            {opts.showPsd && scanPx > 0 && (
-              <div className="expanded-psd-right" style={{ width: Math.round(scanPx * 2 / 3), height: Math.round(scanPx * 2 / 3) }}>
+            {/* PSD to the right — square sized to scan height so it fits without scroll */}
+            {opts.showPsd && scanH > 0 && (
+              <div className="expanded-psd-right" style={{ width: psdSide, height: psdSide }}>
                 <PsdPlot freqs={record.psd.freqs} power={record.psd.power} color="#2196f3" showAxes title="Radial Power Spectral Density" />
               </div>
             )}
