@@ -27,10 +27,13 @@ import { uploadSession, downloadSession } from "./share";
 import { loadTestScans } from "./test_loader";
 
 const DEFAULT_OPTS: ProcessingOptions = {
-  doPoly: true,
+  doPoly: false,
   polyOrder: 1,
   polySigma: 5,
   doLines: true,
+  lineMethod: "polynomial",
+  lineOrder: 2,
+  lineSigma: 3,
   doClip: true,
   climSigma: 5,
   climMin: 0.5,
@@ -296,8 +299,12 @@ export default function App() {
     const psdH = opts.showPsd ? Math.round(scanW * 0.6) : 0;
 
     const procParts: string[] = [];
-    if (opts.doPoly) procParts.push(`Poly leveling order ${opts.polyOrder} (σ = ${opts.polySigma})`);
-    if (opts.doLines) procParts.push("Row leveling");
+    if (opts.doLines) procParts.push(
+      opts.lineMethod === "polynomial"
+        ? `Row leveling poly order ${opts.lineOrder} (σ = ${opts.lineSigma})`
+        : "Row leveling (median)"
+    );
+    if (opts.doPoly) procParts.push(`2D level order ${opts.polyOrder} (σ = ${opts.polySigma})`);
     if (opts.doClip) procParts.push(`Color range ±${opts.climSigma}σ`);
     const procText = procParts.join("  ·  ");
     const footerH = Math.round(42 * k);
@@ -968,8 +975,12 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
     const psdGap = opts.showPsd ? Math.round(16 * k) : 0;
 
     const procParts: string[] = [];
-    if (opts.doPoly) procParts.push(`Poly leveling order ${opts.polyOrder} (σ = ${opts.polySigma})`);
-    if (opts.doLines) procParts.push("Row leveling");
+    if (opts.doLines) procParts.push(
+      opts.lineMethod === "polynomial"
+        ? `Row leveling poly order ${opts.lineOrder} (σ = ${opts.lineSigma})`
+        : "Row leveling (median)"
+    );
+    if (opts.doPoly) procParts.push(`2D level order ${opts.polyOrder} (σ = ${opts.polySigma})`);
     if (opts.doClip) procParts.push(`Color range ±${opts.climSigma}σ`);
     const procText = procParts.join("  ·  ");
     const footerH = Math.round(42 * k);

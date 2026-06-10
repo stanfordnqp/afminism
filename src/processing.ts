@@ -122,6 +122,76 @@ export function horizontalLineLevel(
   return out;
 }
 
+// Per-row 1D polynomial leveling: fits z = c0·x^order + … + c_order to each
+// row independently with iterative sigma clipping, then subtracts the fit.
+export function polyLineLevel(
+  z: Float32Array,
+  side: number,
+  order: number,
+  sigmaClip = 6.0,
+  iterations = 2
+): Float32Array {
+  const out = new Float32Array(z);
+  const norm = Math.max(1, side - 1);
+  const p = order + 1;
+
+  const xs = new Float32Array(side);
+  for (let c = 0; c < side; c++) xs[c] = c / norm;
+
+  // 1D monomial basis [x^order, …, x, 1] for a single point.
+  const basis = (x: number): number[] => {
+    const b = new Array(p);
+    for (let d = 0; d < p; d++) b[d] = Math.pow(x, order - d);
+    return b;
+  };
+
+  for (let r = 0; r < side; r++) {
+    const offset = r * side;
+    let mask = new Uint8Array(side).fill(1);
+    let coeffs = new Array(p).fill(0);
+
+    for (let iter = 0; iter <= iterations; iter++) {
+      const AtA = Array.from({ length: p }, () => new Array(p).fill(0));
+      const Atb = new Array(p).fill(0);
+      for (let c = 0; c < side; c++) {
+        if (!mask[c]) continue;
+        const bv = basis(xs[c]);
+        const zv = z[offset + c];
+        for (let j = 0; j < p; j++) {
+          Atb[j] += bv[j] * zv;
+          for (let k = 0; k < p; k++) AtA[j][k] += bv[j] * bv[k];
+        }
+      }
+      coeffs = solveLinear(AtA, Atb);
+
+      // Residuals and sigma-clip mask update
+      let sumSq = 0, cnt = 0;
+      const res = new Float32Array(side);
+      for (let c = 0; c < side; c++) {
+        const bv = basis(xs[c]);
+        let fit = 0;
+        for (let j = 0; j < p; j++) fit += coeffs[j] * bv[j];
+        res[c] = z[offset + c] - fit;
+        if (mask[c]) { sumSq += res[c] * res[c]; cnt++; }
+      }
+      if (cnt < 2) break;
+      const std = Math.sqrt(sumSq / cnt);
+      if (std === 0) break;
+      const threshold = sigmaClip * std;
+      mask = new Uint8Array(side);
+      for (let c = 0; c < side; c++) mask[c] = Math.abs(res[c]) < threshold ? 1 : 0;
+    }
+
+    for (let c = 0; c < side; c++) {
+      const bv = basis(xs[c]);
+      let fit = 0;
+      for (let j = 0; j < p; j++) fit += coeffs[j] * bv[j];
+      out[offset + c] -= fit;
+    }
+  }
+  return out;
+}
+
 export function computeRms(
   z: Float32Array,
   sigmaClip = 5.0
@@ -166,16 +236,20 @@ function rot90cw(z: Float32Array, side: number, k: number): Float32Array {
 export function reprocess(
   zRaw: Float32Array,
   side: number,
-  opts: Pick<ProcessingOptions, "doPoly" | "polySigma" | "polyOrder" | "doLines">,
+  opts: Pick<ProcessingOptions, "doPoly" | "polySigma" | "polyOrder" | "doLines" | "lineMethod" | "lineOrder" | "lineSigma">,
   rotation: number
 ): Float32Array {
   let z: Float32Array = new Float32Array(zRaw);
   const k = ((rotation / 90) % 4 + 4) % 4;
   if (k) z = rot90cw(z, side, k);
+  if (opts.doLines) {
+    z = opts.lineMethod === "polynomial"
+      ? polyLineLevel(z, side, opts.lineOrder, opts.lineSigma)
+      : horizontalLineLevel(z, side);
+  }
   if (opts.doPoly) {
     const surface = fitPoly(z, side, opts.polyOrder, opts.polySigma);
     for (let i = 0; i < z.length; i++) z[i] -= surface[i];
   }
-  if (opts.doLines) z = horizontalLineLevel(z, side);
   return z;
 }

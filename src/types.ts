@@ -6,6 +6,9 @@ export interface ProcessingOptions {
   polyOrder: number;
   polySigma: number;
   doLines: boolean;
+  lineMethod: "median" | "polynomial";
+  lineOrder: number;
+  lineSigma: number;
   doClip: boolean;
   climSigma: number;
   climMin: number; // slider range min

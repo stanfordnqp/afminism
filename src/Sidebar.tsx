@@ -76,6 +76,11 @@ export default function Sidebar({ open, onToggle, opts, onChange, isExpanded, vi
     if (cur >= MAX_POLY_ORDER) return;
     onChange({ polyOrder: cur + 1 });
   }
+  function bumpLineOrder() {
+    const cur = isNaN(opts.lineOrder) ? 1 : (opts.lineOrder ?? 1);
+    if (cur >= MAX_POLY_ORDER) return;
+    onChange({ lineOrder: cur + 1 });
+  }
 
   return (
     <div className={`sidebar${open ? "" : " collapsed"}`}>
@@ -92,10 +97,56 @@ export default function Sidebar({ open, onToggle, opts, onChange, isExpanded, vi
           <div className="sidebar-section-label">Processing</div>
 
           <div className="sidebar-row">
+            <input type="checkbox" id="doLines" checked={opts.doLines}
+              onChange={(e) => onChange({ doLines: e.target.checked })} />
+            <label htmlFor="doLines">Row leveling</label>
+            <InfoTip text="Levels each scan row independently to remove slow horizontal drift and inter-line offsets." />
+          </div>
+          {opts.doLines && (
+            <>
+              <div className="sidebar-row" style={{ paddingLeft: 20 }}>
+                <span style={{ color: "#666", fontSize: 11 }}>Method:</span>
+                <select value={opts.lineMethod}
+                  onChange={(e) => onChange({ lineMethod: e.target.value as "median" | "polynomial" })}
+                  style={{ fontSize: 11 }}>
+                  <option value="median">Median</option>
+                  <option value="polynomial">Polynomial</option>
+                </select>
+                <InfoTip text="Median subtracts each row's median height. Polynomial fits and subtracts a 1D polynomial from each row (with sigma-clip outlier rejection)." />
+              </div>
+              {opts.lineMethod === "polynomial" && (
+                <>
+                  <div className="sidebar-row" style={{ paddingLeft: 20 }}>
+                    <span style={{ color: "#666", fontSize: 11 }}>Order:</span>
+                    <div className="col-stepper">
+                      <button className="col-step-btn"
+                        onClick={() => onChange({ lineOrder: Math.max(0, (opts.lineOrder || 1) - 1) })}
+                        disabled={(opts.lineOrder || 0) <= 0}>−</button>
+                      <span className="col-step-val">{isNaN(opts.lineOrder) ? 1 : (opts.lineOrder ?? 1)}</span>
+                      <button className="col-step-btn" onClick={bumpLineOrder}
+                        disabled={(isNaN(opts.lineOrder) ? 1 : (opts.lineOrder ?? 1)) >= MAX_POLY_ORDER}
+                        title={(isNaN(opts.lineOrder) ? 1 : (opts.lineOrder ?? 1)) >= MAX_POLY_ORDER ? "slow down buddy that's too much" : undefined}>+</button>
+                    </div>
+                    <InfoTip text="Order of the per-row polynomial: 0 = mean, 1 = line (tilt), 2 = parabola, 3+ = higher-order curve." />
+                  </div>
+                  <div className="sidebar-row" style={{ paddingLeft: 20 }}>
+                    <label htmlFor="lineSigma" style={{ color: "#666", fontSize: 11 }}>σ clip:</label>
+                    <input type="number" id="lineSigma" min={1} max={20} step={0.5}
+                      value={opts.lineSigma}
+                      onChange={(e) => onChange({ lineSigma: parseFloat(e.target.value) || 6 })}
+                      style={{ width: 54 }} />
+                    <InfoTip text="Sigma threshold for outlier rejection during the per-row polynomial fit. Pixels further than this many standard deviations from the fit are excluded and the row is refit." />
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          <div className="sidebar-row">
             <input type="checkbox" id="doPoly" checked={opts.doPoly}
               onChange={(e) => onChange({ doPoly: e.target.checked })} />
-            <label htmlFor="doPoly">Polynomial leveling</label>
-            <InfoTip text="Fits a polynomial surface to the image and subtracts it. Order 0 = mean, 1 = plane (tilt), 2 = paraboloid (bowl/saddle)." />
+            <label htmlFor="doPoly">2D level</label>
+            <InfoTip text="Fits a 2D polynomial surface to the image and subtracts it. Order 0 = mean, 1 = plane (tilt), 2 = paraboloid (bowl/saddle)." />
           </div>
           {opts.doPoly && (
             <>
@@ -122,13 +173,6 @@ export default function Sidebar({ open, onToggle, opts, onChange, isExpanded, vi
               </div>
             </>
           )}
-
-          <div className="sidebar-row">
-            <input type="checkbox" id="doLines" checked={opts.doLines}
-              onChange={(e) => onChange({ doLines: e.target.checked })} />
-            <label htmlFor="doLines">Row leveling</label>
-            <InfoTip text="Subtracts the median height from each scan row independently. Removes slow horizontal drift and inter-line offsets." />
-          </div>
 
           {viewMode !== "psd" && (
           <>

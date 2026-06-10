@@ -122,7 +122,13 @@ export async function deserializeSession(
   const dec = new TextDecoder();
   const json = dec.decode(raw.slice(8, 8 + jsonLen));
   const { opts: rawOpts, scans: scanMetas } = JSON.parse(json) as SessionMeta;
-  const opts: ProcessingOptions = { ...rawOpts, showPsd: rawOpts.showPsd ?? false };
+  const opts: ProcessingOptions = {
+    ...rawOpts,
+    showPsd: rawOpts.showPsd ?? false,
+    lineMethod: rawOpts.lineMethod ?? "median",
+    lineOrder: rawOpts.lineOrder ?? 1,
+    lineSigma: rawOpts.lineSigma ?? 5,
+  };
 
   const floatBase = 8 + jsonLen;
   const scans: ScanRecord[] = scanMetas.map((sm) => {
