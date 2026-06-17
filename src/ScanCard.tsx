@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ScanRecord, ProcessingOptions } from "./types";
+import type { LineSegment } from "./lineprofile";
 import { toImageData, drawScaleBar } from "./colormap";
 import { currentDims } from "./processing";
+import { useLineProfiles } from "./useLineProfiles";
 import Colorbar from "./Colorbar";
 import PsdPlot from "./PsdPlot";
+import LineTracePlot from "./LineTracePlot";
 
 interface Props {
   record: ScanRecord;
@@ -15,6 +18,9 @@ interface Props {
   onRotate: () => void;
   onFlip: () => void;
   onExpand: () => void;
+  onSegmentsChange: (segs: LineSegment[]) => void;
+  selectedSegId: string | null;
+  onSelectSeg: (id: string | null) => void;
   isNew?: boolean;
   /** When true the card is rendered inside the dnd overlay — no sortable hooks needed */
   isOverlay?: boolean;
@@ -22,11 +28,19 @@ interface Props {
 }
 
 export default function ScanCard({
-  record, opts, onRemove, onLabelChange, onRotate, onFlip, onExpand, isNew, isOverlay, showPsd,
+  record, opts, onRemove, onLabelChange, onRotate, onFlip, onExpand,
+  onSegmentsChange, selectedSegId, onSelectSeg, isNew, isOverlay, showPsd,
 }: Props) {
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
+  const lineCanvasRef = useRef<HTMLCanvasElement>(null);
   const [cursorH, setCursorH] = useState<{ cx: number; cy: number; v: number } | null>(null);
+
+  const { traces, hasSegments, showTracePlot, cursor, onCanvasMouseDown, onHoverMove, onHoverLeave, clearTraces } =
+    useLineProfiles({
+      record, onSegmentsChange, dataCanvasRef, lineCanvasRef,
+      selectedSegId, onSelectSeg, showPsd: !!showPsd, enableSuppress: false,
+    });
 
   const sortable = useSortable({ id: record.id, disabled: !!isOverlay });
   const style = isOverlay ? {} : {
@@ -120,7 +134,8 @@ export default function ScanCard({
         <div className="canvas-row">
           <div
             className="card-canvas-wrap"
-            style={{ position: "relative" }}
+            style={{ position: "relative", cursor: isOverlay ? undefined : cursor }}
+            onMouseDown={isOverlay ? undefined : onCanvasMouseDown}
             onMouseMove={(e) => {
               const canvas = dataCanvasRef.current;
               if (!canvas) return;
@@ -130,8 +145,9 @@ export default function ScanCard({
               const ix = Math.min(curW - 1, Math.max(0, Math.floor(px * curW)));
               const iy = Math.min(curH - 1, Math.max(0, Math.floor(py * curH)));
               setCursorH({ cx: e.clientX - r.left, cy: e.clientY - r.top, v: record.z[iy * curW + ix] });
+              if (!isOverlay) onHoverMove(e.clientX, e.clientY);
             }}
-            onMouseLeave={() => setCursorH(null)}
+            onMouseLeave={() => { setCursorH(null); onHoverLeave(); }}
           >
             <canvas
               ref={dataCanvasRef}
@@ -139,8 +155,14 @@ export default function ScanCard({
               style={{ aspectRatio: `${record.scanUm[0]} / ${record.scanUm[1]}` }}
             />
             <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
-            <button className="canvas-flip-btn" onClick={(e) => { e.stopPropagation(); onFlip(); }} onDoubleClick={(e) => e.stopPropagation()} title="Flip horizontally">⇄</button>
-            <button className="canvas-rotate-btn" onClick={(e) => { e.stopPropagation(); onRotate(); }} onDoubleClick={(e) => e.stopPropagation()} title="Rotate 90°">↻</button>
+            <canvas ref={lineCanvasRef} className="lineprofile-canvas" />
+            {hasSegments && !isOverlay && (
+              <button className="canvas-clear-traces-btn" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); clearTraces(); }} onDoubleClick={(e) => e.stopPropagation()} title="Clear all line profiles">
+                <TrashIcon />
+              </button>
+            )}
+            <button className="canvas-flip-btn" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onFlip(); }} onDoubleClick={(e) => e.stopPropagation()} title="Flip horizontally">⇄</button>
+            <button className="canvas-rotate-btn" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRotate(); }} onDoubleClick={(e) => e.stopPropagation()} title="Rotate 90°">↻</button>
             {cursorH && (
               <div className="cursor-readout" style={{ left: cursorH.cx, top: cursorH.cy }}>
                 {fmt(cursorH.v)} nm
@@ -152,6 +174,11 @@ export default function ScanCard({
         {showPsd && (
           <div className="psd-panel">
             <PsdPlot freqs={record.psd.freqs} power={record.psd.power} color="#2196f3" showAxes />
+          </div>
+        )}
+        {showTracePlot && (
+          <div className="trace-panel">
+            <LineTracePlot traces={traces} showAxes />
           </div>
         )}
         <div className="card-stats">{statsLine}</div>
@@ -187,6 +214,14 @@ function ExpandIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
       <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/>
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M2 4h12M6 4V2h4v2M5 4v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4"/>
     </svg>
   );
 }

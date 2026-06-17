@@ -1097,6 +1097,7 @@ input[type="range"] {
 
 /* Figure preview modal */
 .figure-modal {
+  position: relative;
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 24px 80px rgba(0,0,0,0.4);
@@ -1259,9 +1260,10 @@ input[type="range"] {
 }
 
 /* ── PSD panel (below scan card) ── */
-.psd-panel {
+.psd-panel,
+.trace-panel {
   width: 100%;
-  /* Scale with the canvas size so the PSD panel shrinks/grows with zoom
+  /* Scale with the canvas size so the panel shrinks/grows with zoom
      instead of being a fixed pixel height. */
   height: calc(var(--card-canvas-size, 320px) * 0.6);
   border-top: 1px solid #eee;
