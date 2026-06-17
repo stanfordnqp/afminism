@@ -16,7 +16,7 @@ import Sparkles from "./Sparkles";
 import RainbowTrail from "./RainbowTrail";
 import FeedbackButton from "./FeedbackButton";
 import { parseParkTiff } from "./tiff";
-import { reprocess, computeRms } from "./processing";
+import { reprocess, computeRms, currentDims } from "./processing";
 import { computePSD } from "./psd";
 import { toImageData, renderScanForExport, drawScaleBar, drawColorbar } from "./colormap";
 import Colorbar from "./Colorbar";
@@ -148,20 +148,22 @@ export default function App() {
 
   function buildRecord(
     id: string, filename: string, label: string,
-    zRaw: Float32Array, side: number, scanUm: [number, number],
-    rotation: number, o: ProcessingOptions, meta?: string
+    zRaw: Float32Array, width: number, height: number, scanUm: [number, number],
+    rotation: number, flipX: boolean, o: ProcessingOptions, meta?: string
   ): ScanRecord {
-    const z = reprocess(zRaw, side, o, rotation);
+    const z = reprocess(zRaw, width, height, o, rotation, flipX);
     const { rms, rmsClipped, ptp } = computeRms(z, o.climSigma);
-    const psd = computePSD(z, side, scanUm);
-    return { id, filename, label, zRaw, side, scanUm, rotation, z, rms, rmsClipped, ptp, psd, meta };
+    const [curW, curH] = currentDims(width, height, rotation);
+    const psd = computePSD(z, curW, curH, scanUm);
+    return { id, filename, label, zRaw, width, height, scanUm, rotation, flipX, z, rms, rmsClipped, ptp, psd, meta };
   }
 
   function applyOpts(prevScans: ScanRecord[], newOpts: ProcessingOptions): ScanRecord[] {
     return prevScans.map((s) => {
-      const z = reprocess(s.zRaw, s.side, newOpts, s.rotation);
+      const z = reprocess(s.zRaw, s.width, s.height, newOpts, s.rotation, s.flipX);
       const { rms, rmsClipped, ptp } = computeRms(z, newOpts.climSigma);
-      const psd = computePSD(z, s.side, s.scanUm);
+      const [curW, curH] = currentDims(s.width, s.height, s.rotation);
+      const psd = computePSD(z, curW, curH, s.scanUm);
       return { ...s, z, rms, rmsClipped, ptp, psd };
     });
   }
@@ -187,10 +189,10 @@ export default function App() {
       const file = arr[i];
       try {
         const buf = await file.arrayBuffer();
-        const { data, side, scanUm, meta } = parseParkTiff(buf, file.name);
+        const { data, width, height, scanUm, meta } = parseParkTiff(buf, file.name);
         const base = file.name.split("_")[0] ?? file.name.replace(/\.[^.]+$/, "");
         const label = base.charAt(0).toUpperCase() + base.slice(1);
-        newScans.push(buildRecord(uid(), file.name, label, data, side, scanUm, 0, opts, meta));
+        newScans.push(buildRecord(uid(), file.name, label, data, width, height, scanUm, 0, false, opts, meta));
       } catch (e) {
         console.error(`Failed to load ${file.name}:`, e);
         alert(`Could not parse ${file.name}:\n${e}`);
@@ -240,10 +242,23 @@ export default function App() {
       // Each 90° rotation swaps physical width/height, which flips the aspect
       // ratio and the x/y axes for downstream calcs (PSD, scale bar, display).
       const scanUm: [number, number] = [r.scanUm[1], r.scanUm[0]];
-      const z = reprocess(r.zRaw, r.side, opts, rotation);
+      const z = reprocess(r.zRaw, r.width, r.height, opts, rotation, r.flipX);
       const { rms, rmsClipped, ptp } = computeRms(z, opts.climSigma);
-      const psd = computePSD(z, r.side, scanUm);
+      const [curW, curH] = currentDims(r.width, r.height, rotation);
+      const psd = computePSD(z, curW, curH, scanUm);
       return { ...r, rotation, scanUm, z, rms, rmsClipped, ptp, psd };
+    }));
+  }
+  function flipCard(id: string) {
+    setScans((s) => s.map((r) => {
+      if (r.id !== id) return r;
+      // Mirror left-right. Pixel grid and scan size are unchanged.
+      const flipX = !r.flipX;
+      const z = reprocess(r.zRaw, r.width, r.height, opts, r.rotation, flipX);
+      const { rms, rmsClipped, ptp } = computeRms(z, opts.climSigma);
+      const [curW, curH] = currentDims(r.width, r.height, r.rotation);
+      const psd = computePSD(z, curW, curH, r.scanUm);
+      return { ...r, flipX, z, rms, rmsClipped, ptp, psd };
     }));
   }
 
@@ -351,7 +366,8 @@ export default function App() {
       for (let j = 0; j < r.z.length; j++) if (Math.abs(r.z[j]) > maxAbs) maxAbs = Math.abs(r.z[j]);
       const lim = opts.doClip ? opts.climSigma * r.rmsClipped : maxAbs || 1;
 
-      const scanCanvas = renderScanForExport(r.z, r.side, r.scanUm, -lim, lim, opts.doClip, scanW, opts.colormap);
+      const [curW, curH] = currentDims(r.width, r.height, r.rotation);
+      const scanCanvas = renderScanForExport(r.z, curW, curH, r.scanUm, -lim, lim, opts.doClip, scanW, opts.colormap);
       ctx.drawImage(scanCanvas, x, y + titleH, scanW, scanH);
 
       // Colorbar height matches scan height. drawColorbar uses base-700 sizes.
@@ -485,6 +501,7 @@ export default function App() {
             opts={opts}
             onClose={() => setExpandedId(null)}
             onRotate={() => rotateCard(expandedRecord.id)}
+            onFlip={() => flipCard(expandedRecord.id)}
             onLabelChange={(l) => labelCard(expandedRecord.id, l)}
             onToggleSidebar={() => setSidebarOpen(v => !v)}
             sidebarOpen={sidebarOpen}
@@ -575,8 +592,8 @@ export default function App() {
                       onClick={async () => {
                         try {
                           const results = await loadTestScans();
-                          const newScans = results.map(({ data, side, scanUm, filename, label }) =>
-                            buildRecord(uid(), filename, label, data, side, scanUm, 0, opts)
+                          const newScans = results.map(({ data, width, height, scanUm, filename, label }) =>
+                            buildRecord(uid(), filename, label, data, width, height, scanUm, 0, false, opts)
                           );
                           setScans(newScans);
                         } catch (e) {
@@ -603,6 +620,7 @@ export default function App() {
                           onRemove={() => removeCard(r.id)}
                           onLabelChange={(l) => labelCard(r.id, l)}
                           onRotate={() => rotateCard(r.id)}
+                          onFlip={() => flipCard(r.id)}
                           onExpand={() => setExpandedId(r.id)}
                           isNew={newIds.has(r.id)}
                           showPsd={opts.showPsd}
@@ -624,7 +642,7 @@ export default function App() {
             <div className="dnd-overlay">
               <ScanCard
                 record={draggingRecord} opts={opts}
-                onRemove={() => {}} onLabelChange={() => {}} onRotate={() => {}} onExpand={() => {}}
+                onRemove={() => {}} onLabelChange={() => {}} onRotate={() => {}} onFlip={() => {}} onExpand={() => {}}
                 isOverlay
               />
             </div>
@@ -836,11 +854,12 @@ function ZoomableImage({ src }: { src: string }) {
 
 // ── Expanded view (replaces grid when a card is opened) ───────────────────────
 
-function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenerateFigure, onToggleSidebar, sidebarOpen }: {
+function ExpandedView({ record, opts, onClose, onRotate, onFlip, onLabelChange, onGenerateFigure, onToggleSidebar, sidebarOpen }: {
   record: ScanRecord;
   opts: ProcessingOptions;
   onClose: () => void;
   onRotate: () => void;
+  onFlip: () => void;
   onLabelChange: (l: string) => void;
   onGenerateFigure: (blob: Blob) => void;
   onToggleSidebar: () => void;
@@ -860,14 +879,17 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
   for (let j = 0; j < record.z.length; j++) if (Math.abs(record.z[j]) > maxAbs) maxAbs = Math.abs(record.z[j]);
   const lim = opts.doClip ? opts.climSigma * record.rmsClipped : maxAbs || 1;
 
+  // Current (post-rotation) pixel grid dimensions of record.z
+  const [curW, curH] = currentDims(record.width, record.height, record.rotation);
+
   useEffect(() => {
     const canvas = dataCanvasRef.current;
     if (!canvas) return;
-    canvas.width = record.side;
-    canvas.height = record.side;
-    const img = toImageData(record.z, record.side, -lim, lim, opts.doClip, opts.colormap);
+    canvas.width = curW;
+    canvas.height = curH;
+    const img = toImageData(record.z, curW, curH, -lim, lim, opts.doClip, opts.colormap);
     canvas.getContext("2d")!.putImageData(img, 0, 0);
-  }, [record.z, record.side, lim, opts.doClip]);
+  }, [record.z, curW, curH, lim, opts.doClip]);
 
   useEffect(() => {
     const data = dataCanvasRef.current;
@@ -946,9 +968,12 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
       if (type === "raw") {
         let rawMax = 0;
         for (let j = 0; j < record.zRaw.length; j++) if (Math.abs(record.zRaw[j]) > rawMax) rawMax = Math.abs(record.zRaw[j]);
-        c = renderScanForExport(record.zRaw, record.side, record.scanUm, -rawMax, rawMax, false, exportW, opts.colormap);
+        // Raw data is unrotated; use its native pixel grid and scan orientation.
+        const rawScanUm: [number, number] = record.rotation % 180 === 90
+          ? [record.scanUm[1], record.scanUm[0]] : record.scanUm;
+        c = renderScanForExport(record.zRaw, record.width, record.height, rawScanUm, -rawMax, rawMax, false, exportW, opts.colormap);
       } else {
-        c = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, exportW, opts.colormap);
+        c = renderScanForExport(record.z, curW, curH, record.scanUm, -lim, lim, opts.doClip, exportW, opts.colormap);
       }
       const a = document.createElement("a");
       a.href = c.toDataURL("image/png");
@@ -1015,7 +1040,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
 
     const contentY = pad + titleH + subTitleH;
 
-    const scanCvs = renderScanForExport(record.z, record.side, record.scanUm, -lim, lim, opts.doClip, scanW, opts.colormap);
+    const scanCvs = renderScanForExport(record.z, curW, curH, record.scanUm, -lim, lim, opts.doClip, scanW, opts.colormap);
     ctx.drawImage(scanCvs, pad, contentY, scanW, scanH);
 
     // Colorbar height matches scan height
@@ -1121,9 +1146,9 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
                   const r = canvas.getBoundingClientRect();
                   const px = (e.clientX - r.left) / r.width;
                   const py = (e.clientY - r.top) / r.height;
-                  const ix = Math.min(record.side - 1, Math.max(0, Math.floor(px * record.side)));
-                  const iy = Math.min(record.side - 1, Math.max(0, Math.floor(py * record.side)));
-                  setCursorH({ cx: e.clientX - r.left, cy: e.clientY - r.top, v: record.z[iy * record.side + ix] });
+                  const ix = Math.min(curW - 1, Math.max(0, Math.floor(px * curW)));
+                  const iy = Math.min(curH - 1, Math.max(0, Math.floor(py * curH)));
+                  setCursorH({ cx: e.clientX - r.left, cy: e.clientY - r.top, v: record.z[iy * curW + ix] });
                 }}
                 onMouseLeave={() => setCursorH(null)}
               >
@@ -1132,6 +1157,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
                   className="data-canvas"
                 />
                 <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
+                <button className="canvas-flip-btn" onClick={onFlip} title="Flip horizontally">⇄</button>
                 <button className="canvas-rotate-btn" onClick={onRotate} title="Rotate 90° clockwise">↻</button>
                 {cursorH && (
                   <div className="cursor-readout" style={{ left: cursorH.cx, top: cursorH.cy }}>
@@ -1162,8 +1188,8 @@ function ExpandedView({ record, opts, onClose, onRotate, onLabelChange, onGenera
           )}
           <StatRow label="Scan" value={`${record.scanUm[0]}×${record.scanUm[1]} µm`}
             info="Physical size of the scanned area in micrometres." />
-          <StatRow label="Pixels" value={`${record.side}×${record.side}`}
-            info="Raw pixel resolution of the AFM scan." />
+          <StatRow label="Pixels" value={`${curW}×${curH}`}
+            info="Pixel resolution of the AFM scan (columns × rows)." />
           <StatRow label="Rq" value={`${fmt(record.rms)} nm`}
             info="RMS roughness — root-mean-square of height deviations from mean. Standard roughness metric." />
           {opts.doClip && (

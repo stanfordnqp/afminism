@@ -4,7 +4,8 @@
 
 export interface ParkTiff {
   data: Float32Array; // height values in nm, row-major
-  side: number;       // image is side×side pixels
+  width: number;      // pixel columns (x)
+  height: number;     // pixel rows (y)
   scanUm: [number, number]; // [x, y] scan size in µm
   meta: string;       // human-readable source/instrument indicator
 }
@@ -63,12 +64,19 @@ function parsePsia(
   const dataOffset = readTagUint32(view, dataEntry, le);
   const byteCount = dataEntry.count; // type=BYTE, count=total bytes
   const nFloats = byteCount / 4;
-  const side = Math.round(Math.sqrt(nFloats));
 
   // Header tag: value field holds byte offset to the binary header
   const hdrEntry = tags.get(TAG_HEADER);
   if (!hdrEntry) throw new Error("PSIA: no header tag (50435)");
   const hdrOffset = readTagUint32(view, hdrEntry, le);
+
+  // xres/yres give the true pixel grid (may be non-square, e.g. 256×16).
+  // Fall back to a square grid if the header values look wrong.
+  const xres = view.getUint32(hdrOffset + 100, true);
+  const yres = view.getUint32(hdrOffset + 104, true);
+  const square = Math.round(Math.sqrt(nFloats));
+  const width  = (xres > 0 && yres > 0 && xres * yres === nFloats) ? xres : square;
+  const height = (xres > 0 && yres > 0 && xres * yres === nFloats) ? yres : square;
 
   // Parse relevant fields from the PSIA image header (little-endian binary)
   // Layout (all offsets relative to header start):
@@ -115,10 +123,11 @@ function parsePsia(
   const qNm = dataGain * unitScale * zScale * 1e9;
   const z0Nm = dataGain * unitScale * zOffset * 1e9;
 
-  const aligned = new ArrayBuffer(side * side * 4);
-  new Uint8Array(aligned).set(new Uint8Array(buffer, dataOffset, side * side * 4));
+  const nPixels = width * height;
+  const aligned = new ArrayBuffer(nPixels * 4);
+  new Uint8Array(aligned).set(new Uint8Array(buffer, dataOffset, nPixels * 4));
   const raw = new Float32Array(aligned);
-  const nm = new Float32Array(side * side);
+  const nm = new Float32Array(nPixels);
   for (let j = 0; j < nm.length; j++) nm[j] = raw[j] * qNm + z0Nm;
 
   const scanUm: [number, number] = (xreal > 0 && yreal > 0)
@@ -128,7 +137,7 @@ function parsePsia(
   const modeParts = [sourceName, imageMode].filter(Boolean);
   const meta = "Park Systems" + (modeParts.length ? " · " + modeParts.join(" · ") : "");
 
-  return { data: nm, side, scanUm, meta };
+  return { data: nm, width, height, scanUm, meta };
 }
 
 // ── Generic float32/float64 TIFF fallback ───────────────────────────────────
@@ -214,9 +223,8 @@ function parseGenericFloatTiff(
     for (let j = 0; j < nPixels; j++) nm[j] = raw[j] * scale;
   }
 
-  const side = Math.round(Math.sqrt(nPixels));
   const meta = `Float${bps} TIFF`;
-  return { data: nm, side, scanUm, meta };
+  return { data: nm, width, height, scanUm, meta };
 }
 
 // ── IFD utilities ─────────────────────────────────────────────────────────────

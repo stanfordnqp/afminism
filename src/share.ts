@@ -1,5 +1,5 @@
 import type { ScanRecord, ProcessingOptions } from "./types";
-import { reprocess, computeRms } from "./processing";
+import { reprocess, computeRms, currentDims } from "./processing";
 import { computePSD } from "./psd";
 
 export const WORKER_URL = "https://afminism-share.apateonas.workers.dev";
@@ -17,9 +17,12 @@ interface ScanMeta {
   id: string;
   filename: string;
   label: string;
-  side: number;
+  width: number;
+  height: number;
+  side?: number; // legacy (v1): square grid size, used as fallback
   scanUm: [number, number];
   rotation: number;
+  flipX?: boolean;
   meta?: string;
   isExample?: boolean;
   floatOffset: number; // byte offset into float section
@@ -82,7 +85,8 @@ export async function serializeSession(
     const floatCount = s.zRaw.length;
     const meta: ScanMeta = {
       id: s.id, filename: s.filename, label: s.label,
-      side: s.side, scanUm: s.scanUm, rotation: s.rotation,
+      width: s.width, height: s.height, scanUm: s.scanUm,
+      rotation: s.rotation, flipX: s.flipX,
       meta: s.meta, isExample: s.isExample,
       floatOffset: floatByteOffset, floatCount,
     };
@@ -90,7 +94,7 @@ export async function serializeSession(
     return meta;
   });
 
-  const sessionMeta: SessionMeta = { version: 1, opts, scans: scanMetas };
+  const sessionMeta: SessionMeta = { version: 2, opts, scans: scanMetas };
   const jsonBytes = enc.encode(JSON.stringify(sessionMeta));
 
   // Assemble raw buffer
@@ -136,12 +140,17 @@ export async function deserializeSession(
       raw.byteOffset + floatBase + sm.floatOffset,
       raw.byteOffset + floatBase + sm.floatOffset + sm.floatCount * 4
     ));
-    const z = reprocess(zRaw, sm.side, opts, sm.rotation);
+    // v1 sessions stored a single square `side`; fall back to it.
+    const width = sm.width ?? sm.side!;
+    const height = sm.height ?? sm.side!;
+    const flipX = sm.flipX ?? false;
+    const z = reprocess(zRaw, width, height, opts, sm.rotation, flipX);
     const { rms, rmsClipped, ptp } = computeRms(z, opts.climSigma);
-    const psd = computePSD(z, sm.side, sm.scanUm);
+    const [curW, curH] = currentDims(width, height, sm.rotation);
+    const psd = computePSD(z, curW, curH, sm.scanUm);
     return {
       id: sm.id, filename: sm.filename, label: sm.label,
-      side: sm.side, scanUm: sm.scanUm, rotation: sm.rotation,
+      width, height, scanUm: sm.scanUm, rotation: sm.rotation, flipX,
       meta: sm.meta, isExample: sm.isExample,
       zRaw, z, rms, rmsClipped, ptp, psd,
     };

@@ -949,11 +949,11 @@ input[type="range"] {
 .exp-action-btn:hover:not(:disabled) { background: #f0f0f0; color: #333; }
 .exp-action-btn:disabled { opacity: 0.4; cursor: default; }
 
-/* ── rotate button overlaid top-left of canvas ── */
-.canvas-rotate-btn {
+/* ── rotate / flip buttons overlaid top-right of canvas ── */
+.canvas-rotate-btn,
+.canvas-flip-btn {
   position: absolute;
   top: 10px;
-  right: 10px;
   z-index: 10;
   width: 32px;
   height: 32px;
@@ -971,9 +971,14 @@ input[type="range"] {
   padding: 0;
   line-height: 1;
 }
+.canvas-rotate-btn { right: 10px; }
+.canvas-flip-btn { right: 48px; }
 .expanded-canvas-wrap:hover .canvas-rotate-btn,
-.card-canvas-wrap:hover .canvas-rotate-btn { opacity: 1; }
-.canvas-rotate-btn:hover { background: rgba(0,0,0,0.65); }
+.card-canvas-wrap:hover .canvas-rotate-btn,
+.expanded-canvas-wrap:hover .canvas-flip-btn,
+.card-canvas-wrap:hover .canvas-flip-btn { opacity: 1; }
+.canvas-rotate-btn:hover,
+.canvas-flip-btn:hover { background: rgba(0,0,0,0.65); }
 
 /* ── stats panel (right column in expanded view) ── */
 .expanded-stats-panel {

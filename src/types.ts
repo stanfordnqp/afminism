@@ -23,9 +23,11 @@ export interface ScanRecord {
   filename: string;
   label: string;
   zRaw: Float32Array;
-  side: number;
+  width: number;  // raw pixel columns (x) of zRaw
+  height: number; // raw pixel rows (y) of zRaw
   scanUm: [number, number]; // [x, y] µm
   rotation: number; // 0 | 90 | 180 | 270
+  flipX: boolean; // mirror left-right (applied after rotation)
   isExample?: boolean;
   meta?: string;
   // computed on reprocess:

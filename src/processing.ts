@@ -1,7 +1,14 @@
 // Port of afm_gui.py processing functions to TypeScript.
-// All arrays are flat Float32Array, row-major, side×side.
+// All arrays are flat Float32Array, row-major, width×height (cols×rows).
 
 import type { ProcessingOptions } from "./types";
+
+// Display dimensions of the processed (rotated) grid. A 90°/270° rotation
+// swaps columns and rows; flipX preserves dimensions.
+export function currentDims(rawW: number, rawH: number, rotation: number): [number, number] {
+  const k = ((rotation / 90) % 4 + 4) % 4;
+  return k % 2 === 1 ? [rawH, rawW] : [rawW, rawH];
+}
 
 function median(arr: Float32Array): number {
   const sorted = arr.slice().sort();
@@ -45,19 +52,21 @@ function polyBasis(x: number, y: number, order: number): number[] {
 
 export function fitPoly(
   z: Float32Array,
-  side: number,
+  width: number,
+  height: number,
   order: number,
   sigmaClip = 6.0,
   iterations = 2
 ): Float32Array {
-  const n = side * side;
-  const norm = Math.max(1, side - 1);
+  const n = width * height;
+  const normX = Math.max(1, width - 1);
+  const normY = Math.max(1, height - 1);
   const xs = new Float32Array(n);
   const ys = new Float32Array(n);
-  for (let row = 0; row < side; row++) {
-    for (let col = 0; col < side; col++) {
-      xs[row * side + col] = col / norm;
-      ys[row * side + col] = row / norm;
+  for (let row = 0; row < height; row++) {
+    for (let col = 0; col < width; col++) {
+      xs[row * width + col] = col / normX;
+      ys[row * width + col] = row / normY;
     }
   }
 
@@ -109,15 +118,16 @@ export function fitPoly(
 
 export function horizontalLineLevel(
   z: Float32Array,
-  side: number
+  width: number,
+  height: number
 ): Float32Array {
   const out = new Float32Array(z);
-  const row = new Float32Array(side);
-  for (let r = 0; r < side; r++) {
-    const offset = r * side;
-    row.set(z.subarray(offset, offset + side));
+  const row = new Float32Array(width);
+  for (let r = 0; r < height; r++) {
+    const offset = r * width;
+    row.set(z.subarray(offset, offset + width));
     const m = median(row);
-    for (let c = 0; c < side; c++) out[offset + c] -= m;
+    for (let c = 0; c < width; c++) out[offset + c] -= m;
   }
   return out;
 }
@@ -126,17 +136,18 @@ export function horizontalLineLevel(
 // row independently with iterative sigma clipping, then subtracts the fit.
 export function polyLineLevel(
   z: Float32Array,
-  side: number,
+  width: number,
+  height: number,
   order: number,
   sigmaClip = 6.0,
   iterations = 2
 ): Float32Array {
   const out = new Float32Array(z);
-  const norm = Math.max(1, side - 1);
+  const norm = Math.max(1, width - 1);
   const p = order + 1;
 
-  const xs = new Float32Array(side);
-  for (let c = 0; c < side; c++) xs[c] = c / norm;
+  const xs = new Float32Array(width);
+  for (let c = 0; c < width; c++) xs[c] = c / norm;
 
   // 1D monomial basis [x^order, …, x, 1] for a single point.
   const basis = (x: number): number[] => {
@@ -145,15 +156,15 @@ export function polyLineLevel(
     return b;
   };
 
-  for (let r = 0; r < side; r++) {
-    const offset = r * side;
-    let mask = new Uint8Array(side).fill(1);
+  for (let r = 0; r < height; r++) {
+    const offset = r * width;
+    let mask = new Uint8Array(width).fill(1);
     let coeffs = new Array(p).fill(0);
 
     for (let iter = 0; iter <= iterations; iter++) {
       const AtA = Array.from({ length: p }, () => new Array(p).fill(0));
       const Atb = new Array(p).fill(0);
-      for (let c = 0; c < side; c++) {
+      for (let c = 0; c < width; c++) {
         if (!mask[c]) continue;
         const bv = basis(xs[c]);
         const zv = z[offset + c];
@@ -166,8 +177,8 @@ export function polyLineLevel(
 
       // Residuals and sigma-clip mask update
       let sumSq = 0, cnt = 0;
-      const res = new Float32Array(side);
-      for (let c = 0; c < side; c++) {
+      const res = new Float32Array(width);
+      for (let c = 0; c < width; c++) {
         const bv = basis(xs[c]);
         let fit = 0;
         for (let j = 0; j < p; j++) fit += coeffs[j] * bv[j];
@@ -178,11 +189,11 @@ export function polyLineLevel(
       const std = Math.sqrt(sumSq / cnt);
       if (std === 0) break;
       const threshold = sigmaClip * std;
-      mask = new Uint8Array(side);
-      for (let c = 0; c < side; c++) mask[c] = Math.abs(res[c]) < threshold ? 1 : 0;
+      mask = new Uint8Array(width);
+      for (let c = 0; c < width; c++) mask[c] = Math.abs(res[c]) < threshold ? 1 : 0;
     }
 
-    for (let c = 0; c < side; c++) {
+    for (let c = 0; c < width; c++) {
       const bv = basis(xs[c]);
       let fit = 0;
       for (let j = 0; j < p; j++) fit += coeffs[j] * bv[j];
@@ -219,36 +230,55 @@ export function computeRms(
   return { rms, rmsClipped: Math.sqrt(sum2c / cnt), ptp };
 }
 
-function rot90cw(z: Float32Array, side: number, k: number): Float32Array {
+// Rotate k×90° clockwise. Returns rotated array; dimensions swap on odd k
+// (use currentDims to get the resulting width/height).
+function rot90cw(z: Float32Array, width: number, height: number, k: number): Float32Array {
   let cur = z;
+  let cw = width, ch = height;
   for (let t = 0; t < k; t++) {
-    const next = new Float32Array(side * side);
-    for (let r = 0; r < side; r++) {
-      for (let c = 0; c < side; c++) {
-        next[c * side + (side - 1 - r)] = cur[r * side + c];
+    const next = new Float32Array(cur.length);
+    const nw = ch; // new column count after a 90° CW turn
+    for (let r = 0; r < ch; r++) {
+      for (let c = 0; c < cw; c++) {
+        next[c * nw + (ch - 1 - r)] = cur[r * cw + c];
       }
     }
     cur = next;
+    [cw, ch] = [ch, cw];
   }
   return cur;
 }
 
+// Mirror left-right (across the vertical axis).
+function flipHoriz(z: Float32Array, width: number, height: number): Float32Array {
+  const out = new Float32Array(z.length);
+  for (let r = 0; r < height; r++) {
+    const offset = r * width;
+    for (let c = 0; c < width; c++) out[offset + c] = z[offset + (width - 1 - c)];
+  }
+  return out;
+}
+
 export function reprocess(
   zRaw: Float32Array,
-  side: number,
+  rawWidth: number,
+  rawHeight: number,
   opts: Pick<ProcessingOptions, "doPoly" | "polySigma" | "polyOrder" | "doLines" | "lineMethod" | "lineOrder" | "lineSigma">,
-  rotation: number
+  rotation: number,
+  flipX: boolean
 ): Float32Array {
   let z: Float32Array = new Float32Array(zRaw);
   const k = ((rotation / 90) % 4 + 4) % 4;
-  if (k) z = rot90cw(z, side, k);
+  if (k) z = rot90cw(z, rawWidth, rawHeight, k);
+  const [width, height] = currentDims(rawWidth, rawHeight, rotation);
+  if (flipX) z = flipHoriz(z, width, height);
   if (opts.doLines) {
     z = opts.lineMethod === "polynomial"
-      ? polyLineLevel(z, side, opts.lineOrder, opts.lineSigma)
-      : horizontalLineLevel(z, side);
+      ? polyLineLevel(z, width, height, opts.lineOrder, opts.lineSigma)
+      : horizontalLineLevel(z, width, height);
   }
   if (opts.doPoly) {
-    const surface = fitPoly(z, side, opts.polyOrder, opts.polySigma);
+    const surface = fitPoly(z, width, height, opts.polyOrder, opts.polySigma);
     for (let i = 0; i < z.length; i++) z[i] -= surface[i];
   }
   return z;

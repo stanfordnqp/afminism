@@ -35,7 +35,7 @@ describe("computePSD", () => {
     const rng = makeRng(42);
     const z = new Float32Array(N * N).map(() => (rng() - 0.5) * 10);
 
-    const { freqs, power } = computePSD(z, N, scanUm);
+    const { freqs, power } = computePSD(z, N, N, scanUm);
     const sigma2_data = variance(z);
     const sigma2_psd = integratePSD(freqs, power);
 
@@ -55,8 +55,8 @@ describe("computePSD", () => {
     const zT = new Float32Array(N * N);
     for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) zT[j * N + i] = z[i * N + j];
 
-    const a = computePSD(z, N, [5, 10]);
-    const b = computePSD(zT, N, [10, 5]);
+    const a = computePSD(z, N, N, [5, 10]);
+    const b = computePSD(zT, N, N, [10, 5]);
 
     expect(a.power.length).toBe(b.power.length);
     // Compare median ratio across non-zero bins
@@ -80,11 +80,39 @@ describe("computePSD", () => {
     const sigma2 = variance(z);
 
     for (const scanUm of [[5, 5], [10, 10]] as [number, number][]) {
-      const { freqs, power } = computePSD(z, N, scanUm);
+      const { freqs, power } = computePSD(z, N, N, scanUm);
       const sigma2_psd = integratePSD(freqs, power);
       const relErr = Math.abs(sigma2_psd - sigma2) / sigma2;
       expect(relErr, `scan ${scanUm[0]} µm`).toBeLessThan(0.25);
     }
+  });
+
+  it("rectangular pixel grid (W≠H): sinusoid along x peaks at correct frequency", () => {
+    // 256 px along x, 64 px along y — unequal pixel counts. A sinusoid that
+    // varies only along x must peak at f0 regardless of the (coarser) y sampling.
+    const W = 256, H = 64;
+    const scanUm: [number, number] = [10, 10];
+    const dx = scanUm[0] / W;
+    const f0 = 5; // µm⁻¹
+    const amp = 3; // nm
+    const z = new Float32Array(W * H);
+    for (let i = 0; i < H; i++)
+      for (let j = 0; j < W; j++)
+        z[i * W + j] = amp * Math.sin(2 * Math.PI * f0 * j * dx);
+
+    const { freqs, power } = computePSD(z, W, H, scanUm);
+    expect(freqs.length).toBeGreaterThan(0);
+
+    let peakIdx = 0;
+    for (let i = 1; i < power.length; i++) if (power[i] > power[peakIdx]) peakIdx = i;
+    expect(Math.abs(freqs[peakIdx] - f0)).toBeLessThan(1.5 / scanUm[0]);
+  });
+
+  it("non-power-of-2 dimensions return empty arrays (no hang)", () => {
+    const z = new Float32Array(100 * 100);
+    const { freqs, power } = computePSD(z, 100, 100, [5, 5]);
+    expect(freqs.length).toBe(0);
+    expect(power.length).toBe(0);
   });
 
   it("sinusoidal surface: PSD peak at correct spatial frequency", () => {
@@ -98,7 +126,7 @@ describe("computePSD", () => {
       for (let j = 0; j < N; j++)
         z[i * N + j] = amp * Math.sin(2 * Math.PI * f0 * j * dx);
 
-    const { freqs, power } = computePSD(z, N, scanUm);
+    const { freqs, power } = computePSD(z, N, N, scanUm);
 
     let peakIdx = 0;
     for (let i = 1; i < power.length; i++) if (power[i] > power[peakIdx]) peakIdx = i;

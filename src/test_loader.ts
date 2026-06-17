@@ -13,7 +13,8 @@ const TEST_FILES: Array<{ filename: string; label: string; scanUm?: [number, num
 
 interface NpyResult {
   data: Float32Array;
-  side: number;
+  width: number;
+  height: number;
   scanUm: [number, number];
   filename: string;
   label: string;
@@ -41,12 +42,11 @@ function parseNpy(buf: ArrayBuffer, filename: string, label: string): NpyResult 
   const dims = shapeMatch[1].split(",").map((s) => parseInt(s.trim())).filter((n) => !isNaN(n));
   if (dims.length !== 2) throw new Error(`${filename}: expected 2D array`);
   const [rows, cols] = dims;
-  if (rows !== cols) throw new Error(`${filename}: expected square array`);
 
   const dataOffset = headerOffset + headerLen;
   const data = new Float32Array(buf, dataOffset, rows * cols);
 
-  return { data, side: rows, scanUm: [5.0, 5.0], filename, label };
+  return { data, width: cols, height: rows, scanUm: [5.0, 5.0], filename, label };
 }
 
 export async function loadTestScans(): Promise<NpyResult[]> {
@@ -58,8 +58,8 @@ export async function loadTestScans(): Promise<NpyResult[]> {
   if (exRes.ok) {
     const { parseParkTiff } = await import("./tiff");
     const buf = await exRes.arrayBuffer();
-    const { data, side, scanUm } = parseParkTiff(buf, "example.tiff");
-    results.push({ data, side, scanUm, filename: "example.tiff", label: "Example" });
+    const { data, width, height, scanUm } = parseParkTiff(buf, "example.tiff");
+    results.push({ data, width, height, scanUm, filename: "example.tiff", label: "Example" });
   }
 
   for (const { filename, label, scanUm } of TEST_FILES) {

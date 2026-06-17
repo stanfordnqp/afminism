@@ -3,6 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ScanRecord, ProcessingOptions } from "./types";
 import { toImageData, drawScaleBar } from "./colormap";
+import { currentDims } from "./processing";
 import Colorbar from "./Colorbar";
 import PsdPlot from "./PsdPlot";
 
@@ -12,6 +13,7 @@ interface Props {
   onRemove: () => void;
   onLabelChange: (label: string) => void;
   onRotate: () => void;
+  onFlip: () => void;
   onExpand: () => void;
   isNew?: boolean;
   /** When true the card is rendered inside the dnd overlay — no sortable hooks needed */
@@ -20,7 +22,7 @@ interface Props {
 }
 
 export default function ScanCard({
-  record, opts, onRemove, onLabelChange, onRotate, onExpand, isNew, isOverlay, showPsd,
+  record, opts, onRemove, onLabelChange, onRotate, onFlip, onExpand, isNew, isOverlay, showPsd,
 }: Props) {
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -39,15 +41,18 @@ export default function ScanCard({
   for (let j = 0; j < record.z.length; j++) if (Math.abs(record.z[j]) > maxAbs) maxAbs = Math.abs(record.z[j]);
   const lim = opts.doClip ? opts.climSigma * record.rmsClipped : maxAbs || 1;
 
+  // Current (post-rotation) pixel grid dimensions of record.z
+  const [curW, curH] = currentDims(record.width, record.height, record.rotation);
+
   // ── render raw pixel data (always, including when minimized for preview) ──
   useEffect(() => {
     const canvas = dataCanvasRef.current;
     if (!canvas) return;
-    canvas.width = record.side;
-    canvas.height = record.side;
-    const img = toImageData(record.z, record.side, -lim, lim, opts.doClip, opts.colormap);
+    canvas.width = curW;
+    canvas.height = curH;
+    const img = toImageData(record.z, curW, curH, -lim, lim, opts.doClip, opts.colormap);
     canvas.getContext("2d")!.putImageData(img, 0, 0);
-  }, [record.z, record.side, lim, opts.doClip, opts.colormap]);
+  }, [record.z, curW, curH, lim, opts.doClip, opts.colormap]);
 
   // ── render scale bar on HiDPI overlay canvas via ResizeObserver ───────────
   useEffect(() => {
@@ -122,9 +127,9 @@ export default function ScanCard({
               const r = canvas.getBoundingClientRect();
               const px = (e.clientX - r.left) / r.width;
               const py = (e.clientY - r.top) / r.height;
-              const ix = Math.min(record.side - 1, Math.max(0, Math.floor(px * record.side)));
-              const iy = Math.min(record.side - 1, Math.max(0, Math.floor(py * record.side)));
-              setCursorH({ cx: e.clientX - r.left, cy: e.clientY - r.top, v: record.z[iy * record.side + ix] });
+              const ix = Math.min(curW - 1, Math.max(0, Math.floor(px * curW)));
+              const iy = Math.min(curH - 1, Math.max(0, Math.floor(py * curH)));
+              setCursorH({ cx: e.clientX - r.left, cy: e.clientY - r.top, v: record.z[iy * curW + ix] });
             }}
             onMouseLeave={() => setCursorH(null)}
           >
@@ -134,6 +139,7 @@ export default function ScanCard({
               style={{ aspectRatio: `${record.scanUm[0]} / ${record.scanUm[1]}` }}
             />
             <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
+            <button className="canvas-flip-btn" onClick={(e) => { e.stopPropagation(); onFlip(); }} onDoubleClick={(e) => e.stopPropagation()} title="Flip horizontally">⇄</button>
             <button className="canvas-rotate-btn" onClick={(e) => { e.stopPropagation(); onRotate(); }} onDoubleClick={(e) => e.stopPropagation()} title="Rotate 90°">↻</button>
             {cursorH && (
               <div className="cursor-readout" style={{ left: cursorH.cx, top: cursorH.cy }}>

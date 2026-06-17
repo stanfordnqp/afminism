@@ -67,16 +67,18 @@ function lut(cm: ColormapName = "afmhot"): Uint8Array {
 
 export function toImageData(
   z: Float32Array,
-  side: number,
+  width: number,
+  height: number,
   vmin: number,
   vmax: number,
   clip: boolean,
   colormap: ColormapName = "afmhot"
 ): ImageData {
   const L = lut(colormap);
-  const pixels = new Uint8ClampedArray(side * side * 4);
+  const n = width * height;
+  const pixels = new Uint8ClampedArray(n * 4);
   const range = vmax - vmin || 1;
-  for (let i = 0; i < side * side; i++) {
+  for (let i = 0; i < n; i++) {
     const v = z[i];
     let r: number, g: number, b: number;
     if (clip && v < vmin) {
@@ -93,7 +95,7 @@ export function toImageData(
     pixels[i * 4 + 2] = b;
     pixels[i * 4 + 3] = 255;
   }
-  return new ImageData(pixels, side, side);
+  return new ImageData(pixels, width, height);
 }
 
 export function drawScaleBar(
@@ -150,7 +152,8 @@ export function drawScaleBar(
 
 export function renderScanForExport(
   z: Float32Array,
-  side: number,
+  width: number,
+  height: number,
   scanUm: [number, number],
   vmin: number,
   vmax: number,
@@ -160,9 +163,9 @@ export function renderScanForExport(
 ): HTMLCanvasElement {
   // Output canvas matches the physical aspect ratio of the scan.
   const exportH = Math.round(exportW * (scanUm[1] / scanUm[0]));
-  const img = toImageData(z, side, vmin, vmax, doClip, colormap);
+  const img = toImageData(z, width, height, vmin, vmax, doClip, colormap);
   const src = document.createElement("canvas");
-  src.width = side; src.height = side;
+  src.width = width; src.height = height;
   src.getContext("2d")!.putImageData(img, 0, 0);
 
   const out = document.createElement("canvas");
