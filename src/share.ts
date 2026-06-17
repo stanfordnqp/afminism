@@ -1,4 +1,5 @@
 import type { ScanRecord, ProcessingOptions } from "./types";
+import type { LineSegment } from "./lineprofile";
 import { reprocess, computeRms, currentDims } from "./processing";
 import { computePSD } from "./psd";
 
@@ -23,6 +24,7 @@ interface ScanMeta {
   scanUm: [number, number];
   rotation: number;
   flipX?: boolean;
+  segments?: LineSegment[];
   meta?: string;
   isExample?: boolean;
   floatOffset: number; // byte offset into float section
@@ -86,7 +88,7 @@ export async function serializeSession(
     const meta: ScanMeta = {
       id: s.id, filename: s.filename, label: s.label,
       width: s.width, height: s.height, scanUm: s.scanUm,
-      rotation: s.rotation, flipX: s.flipX,
+      rotation: s.rotation, flipX: s.flipX, segments: s.segments,
       meta: s.meta, isExample: s.isExample,
       floatOffset: floatByteOffset, floatCount,
     };
@@ -151,6 +153,7 @@ export async function deserializeSession(
     return {
       id: sm.id, filename: sm.filename, label: sm.label,
       width, height, scanUm: sm.scanUm, rotation: sm.rotation, flipX,
+      segments: sm.segments ?? [],
       meta: sm.meta, isExample: sm.isExample,
       zRaw, z, rms, rmsClipped, ptp, psd,
     };

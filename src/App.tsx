@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -22,7 +22,10 @@ import { toImageData, renderScanForExport, drawScaleBar, drawColorbar } from "./
 import Colorbar from "./Colorbar";
 import PsdPlot, { drawPsd } from "./PsdPlot";
 import PsdSummaryView, { buildPsdSummaryCanvas } from "./PsdSummaryView";
+import LineTracePlot, { drawLineTrace } from "./LineTracePlot";
 import type { ScanRecord, ProcessingOptions } from "./types";
+import type { LineSegment, LineTrace } from "./lineprofile";
+import { sampleSegment, TRACE_PALETTE } from "./lineprofile";
 import { uploadSession, downloadSession } from "./share";
 import { loadTestScans } from "./test_loader";
 
@@ -45,6 +48,100 @@ const DEFAULT_OPTS: ProcessingOptions = {
 
 let idCounter = 0;
 const uid = () => `scan-${++idCounter}`;
+let segCounter = 0;
+const segUid = () => `seg-${++segCounter}`;
+
+// Recompute traces for a record's segments against its current processed data.
+function buildTraces(record: ScanRecord): LineTrace[] {
+  const [curW, curH] = currentDims(record.width, record.height, record.rotation);
+  return record.segments.map((seg, i) => ({
+    id: seg.id,
+    label: `${i + 1}`,
+    color: TRACE_PALETTE[i % TRACE_PALETTE.length],
+    ...sampleSegment(record.z, curW, curH, record.scanUm, seg),
+  }));
+}
+
+// Draw the line-profile segments (tail dot + arrowhead + number) onto a context
+// sized w×h CSS px. selectedId highlights one segment; scale grows markers for
+// high-res figure export.
+function drawSegments(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  segments: LineSegment[],
+  selectedId: string | null,
+  scale = 1,
+) {
+  segments.forEach((seg, i) => {
+    const color = TRACE_PALETTE[i % TRACE_PALETTE.length];
+    const x0 = seg.x0 * w, y0 = seg.y0 * h, x1 = seg.x1 * w, y1 = seg.y1 * h;
+    const sel = seg.id === selectedId;
+    const lw = (sel ? 3.5 : 2) * scale;
+    const dot = (sel ? 5 : 4) * scale;
+    ctx.lineCap = "round";
+
+    // Selected: a bright glow halo behind the line so it clearly stands out.
+    if (sel) {
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.3;
+      ctx.lineWidth = lw + 9 * scale;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // Dark halo for contrast on any background, then the colored line.
+    ctx.strokeStyle = "rgba(0,0,0,0.55)";
+    ctx.lineWidth = lw + 2 * scale;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.strokeStyle = sel ? "#fff" : color;
+    ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    if (sel) {
+      // Thin colored core over the white so the series color still reads.
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1, lw - 2 * scale);
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    }
+
+    // Arrowhead at the head (x1,y1) — sized to cover the line width.
+    const ang = Math.atan2(y1 - y0, x1 - x0);
+    const aLen = 15 * scale, aW = Math.PI / 5;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 - aLen * Math.cos(ang - aW), y1 - aLen * Math.sin(ang - aW));
+    ctx.lineTo(x1 - aLen * Math.cos(ang + aW), y1 - aLen * Math.sin(ang + aW));
+    ctx.closePath();
+    ctx.fill();
+
+    // Tail dot (profile origin, x=0)
+    ctx.fillStyle = color;
+    ctx.strokeStyle = "rgba(0,0,0,0.55)";
+    ctx.lineWidth = 1.5 * scale;
+    ctx.beginPath(); ctx.arc(x0, y0, dot, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+    // Selected: white draggable handle rings at both endpoints.
+    if (sel) {
+      ctx.lineWidth = 2 * scale;
+      for (const [hx, hy] of [[x0, y0], [x1, y1]] as const) {
+        ctx.beginPath(); ctx.arc(hx, hy, dot + 2 * scale, 0, Math.PI * 2);
+        ctx.fillStyle = "#fff"; ctx.fill();
+        ctx.strokeStyle = color; ctx.stroke();
+      }
+    }
+
+    // Number label near the tail
+    ctx.font = `bold ${11 * scale}px Arial, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const lx = x0 - 10 * scale * Math.cos(ang), ly = y0 - 10 * scale * Math.sin(ang);
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillText(`${i + 1}`, lx + scale, ly + scale);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(`${i + 1}`, lx, ly);
+  });
+}
 
 export default function App() {
   const [scans, setScans] = useState<ScanRecord[]>([]);
@@ -155,7 +252,7 @@ export default function App() {
     const { rms, rmsClipped, ptp } = computeRms(z, o.climSigma);
     const [curW, curH] = currentDims(width, height, rotation);
     const psd = computePSD(z, curW, curH, scanUm);
-    return { id, filename, label, zRaw, width, height, scanUm, rotation, flipX, z, rms, rmsClipped, ptp, psd, meta };
+    return { id, filename, label, zRaw, width, height, scanUm, rotation, flipX, segments: [], z, rms, rmsClipped, ptp, psd, meta };
   }
 
   function applyOpts(prevScans: ScanRecord[], newOpts: ProcessingOptions): ScanRecord[] {
@@ -246,7 +343,11 @@ export default function App() {
       const { rms, rmsClipped, ptp } = computeRms(z, opts.climSigma);
       const [curW, curH] = currentDims(r.width, r.height, rotation);
       const psd = computePSD(z, curW, curH, scanUm);
-      return { ...r, rotation, scanUm, z, rms, rmsClipped, ptp, psd };
+      // Segments rotate with the image: a 90° CW turn maps (x,y) → (1-y, x).
+      const segments = r.segments.map((sg) => ({
+        ...sg, x0: 1 - sg.y0, y0: sg.x0, x1: 1 - sg.y1, y1: sg.x1,
+      }));
+      return { ...r, rotation, scanUm, segments, z, rms, rmsClipped, ptp, psd };
     }));
   }
   function flipCard(id: string) {
@@ -258,8 +359,13 @@ export default function App() {
       const { rms, rmsClipped, ptp } = computeRms(z, opts.climSigma);
       const [curW, curH] = currentDims(r.width, r.height, r.rotation);
       const psd = computePSD(z, curW, curH, r.scanUm);
-      return { ...r, flipX, z, rms, rmsClipped, ptp, psd };
+      // Segments mirror with the image: (x,y) → (1-x, y).
+      const segments = r.segments.map((sg) => ({ ...sg, x0: 1 - sg.x0, x1: 1 - sg.x1 }));
+      return { ...r, flipX, segments, z, rms, rmsClipped, ptp, psd };
     }));
+  }
+  function updateSegments(id: string, segments: LineSegment[]) {
+    setScans((s) => s.map((r) => r.id === id ? { ...r, segments } : r));
   }
 
   // ── dnd reorder ───────────────────────────────────────────────────────────
@@ -312,6 +418,9 @@ export default function App() {
     const colorbarW = Math.round(62 * k);
     const colorbarGap = Math.round(8 * k);
     const psdH = opts.showPsd ? Math.round(scanW * 0.6) : 0;
+    // Reserve a trace row when any card carries line profiles (parity with PSD).
+    const anySegments = visible.some((r) => r.segments.length > 0);
+    const traceH = anySegments ? Math.round(scanW * 0.6) : 0;
 
     const procParts: string[] = [];
     if (opts.doLines) procParts.push(
@@ -339,7 +448,7 @@ export default function App() {
       }
       rowScanH.push(maxH);
     }
-    const rowH = rowScanH.map((h) => h + titleH + statsH + psdH);
+    const rowH = rowScanH.map((h) => h + titleH + statsH + psdH + traceH);
     const rowY: number[] = [];
     let yAcc = padding;
     for (let r = 0; r < rows; r++) { rowY.push(yAcc); yAcc += rowH[r] + (r < rows - 1 ? gap : 0); }
@@ -369,6 +478,12 @@ export default function App() {
       const [curW, curH] = currentDims(r.width, r.height, r.rotation);
       const scanCanvas = renderScanForExport(r.z, curW, curH, r.scanUm, -lim, lim, opts.doClip, scanW, opts.colormap);
       ctx.drawImage(scanCanvas, x, y + titleH, scanW, scanH);
+      if (r.segments.length) {
+        ctx.save();
+        ctx.translate(x, y + titleH);
+        drawSegments(ctx, scanW, scanH, r.segments, null, k);
+        ctx.restore();
+      }
 
       // Colorbar height matches scan height. drawColorbar uses base-700 sizes.
       ctx.save();
@@ -393,11 +508,20 @@ export default function App() {
         drawPsd(ctx, cellW / k, psdH / k, [{ freqs: r.psd.freqs, power: r.psd.power, color: "#2196f3", label: r.label }], true);
         ctx.restore();
       }
+      // Trace panel below the PSD (blank for cards without segments).
+      if (r.segments.length) {
+        const traceY = y + titleH + rowMaxScanH + psdH;
+        ctx.save();
+        ctx.translate(x, traceY);
+        ctx.scale(k, k);
+        drawLineTrace(ctx, cellW / k, traceH / k, buildTraces(r), true, undefined, "Line profiles");
+        ctx.restore();
+      }
 
       const parts = [`${r.scanUm[0]}×${r.scanUm[1]} µm`, `Rq = ${fmt(r.rms)} nm`];
       if (opts.doClip) parts.push(`Rq* = ${fmt(r.rmsClipped)} nm`);
       parts.push(`PtP = ${fmt(r.ptp)} nm`);
-      const statsBaseY = y + titleH + rowMaxScanH + psdH;
+      const statsBaseY = y + titleH + rowMaxScanH + psdH + traceH;
       ctx.fillStyle = "#444";
       ctx.font = `${Math.round(13 * k)}px Arial, sans-serif`;
       ctx.textAlign = "center";
@@ -502,6 +626,7 @@ export default function App() {
             onClose={() => setExpandedId(null)}
             onRotate={() => rotateCard(expandedRecord.id)}
             onFlip={() => flipCard(expandedRecord.id)}
+            onSegmentsChange={(segs) => updateSegments(expandedRecord.id, segs)}
             onLabelChange={(l) => labelCard(expandedRecord.id, l)}
             onToggleSidebar={() => setSidebarOpen(v => !v)}
             sidebarOpen={sidebarOpen}
@@ -854,12 +979,13 @@ function ZoomableImage({ src }: { src: string }) {
 
 // ── Expanded view (replaces grid when a card is opened) ───────────────────────
 
-function ExpandedView({ record, opts, onClose, onRotate, onFlip, onLabelChange, onGenerateFigure, onToggleSidebar, sidebarOpen }: {
+function ExpandedView({ record, opts, onClose, onRotate, onFlip, onSegmentsChange, onLabelChange, onGenerateFigure, onToggleSidebar, sidebarOpen }: {
   record: ScanRecord;
   opts: ProcessingOptions;
   onClose: () => void;
   onRotate: () => void;
   onFlip: () => void;
+  onSegmentsChange: (segs: LineSegment[]) => void;
   onLabelChange: (l: string) => void;
   onGenerateFigure: (blob: Blob) => void;
   onToggleSidebar: () => void;
@@ -867,6 +993,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onLabelChange, 
 }) {
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
+  const lineCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const [areaSize, setAreaSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
@@ -874,6 +1001,22 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onLabelChange, 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [cursorH, setCursorH] = useState<{ cx: number; cy: number; v: number } | null>(null);
+  const [selectedSeg, setSelectedSeg] = useState<string | null>(null);
+  // Hold the trace plot back until the first segment is released (so the scan
+  // doesn't resize mid-drag); track drag/hover for the endpoint grab cursor.
+  const [suppressPlot, setSuppressPlot] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [hoverEndpoint, setHoverEndpoint] = useState(false);
+
+  const segments = record.segments;
+  const hasSegments = segments.length > 0;
+  const traces = useMemo(() => buildTraces(record), [record]);
+
+  // Latest segments + callback for window-drag closures (avoid stale captures).
+  const segmentsRef = useRef(segments);
+  useEffect(() => { segmentsRef.current = segments; }, [segments]);
+  const onSegmentsChangeRef = useRef(onSegmentsChange);
+  onSegmentsChangeRef.current = onSegmentsChange;
 
   let maxAbs = 0;
   for (let j = 0; j < record.z.length; j++) if (Math.abs(record.z[j]) > maxAbs) maxAbs = Math.abs(record.z[j]);
@@ -916,6 +1059,149 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onLabelChange, 
     return () => obs.disconnect();
   }, [record.scanUm]);
 
+  // Draw the line-profile overlay (segments + arrowheads) on its own canvas.
+  useEffect(() => {
+    const data = dataCanvasRef.current;
+    const lc = lineCanvasRef.current;
+    if (!data || !lc) return;
+    function draw() {
+      if (!data || !lc) return;
+      const dpr = window.devicePixelRatio || 1;
+      const w = data.clientWidth, h = data.clientHeight;
+      if (!w || !h) return;
+      lc.width = Math.round(w * dpr);
+      lc.height = Math.round(h * dpr);
+      const ctx = lc.getContext("2d")!;
+      ctx.clearRect(0, 0, lc.width, lc.height);
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      drawSegments(ctx, w, h, segments, selectedSeg);
+      ctx.restore();
+    }
+    const obs = new ResizeObserver(draw);
+    obs.observe(data);
+    draw();
+    return () => obs.disconnect();
+  }, [segments, selectedSeg]);
+
+  // Delete the selected segment with Delete/Backspace (unless typing in a field).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const el = document.activeElement;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
+      if (!selectedSeg) return;
+      e.preventDefault();
+      const next = segmentsRef.current.filter((s) => s.id !== selectedSeg);
+      segmentsRef.current = next;
+      onSegmentsChangeRef.current(next);
+      setSelectedSeg(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedSeg]);
+
+  // ── line-profile pointer interaction ──────────────────────────────────────
+  // Distance from point (px,py) to segment a→b, all in client px.
+  function distToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  }
+
+  function onCanvasMouseDown(e: React.MouseEvent) {
+    if (e.button !== 0) return;
+    const canvas = dataCanvasRef.current;
+    if (!canvas) return;
+    const r = canvas.getBoundingClientRect();
+    const cx = e.clientX, cy = e.clientY;
+    const segs = segmentsRef.current;
+    const HIT = 11; // endpoint grab radius (px)
+
+    let drag: { id: string; end: 0 | 1; isNew: boolean } | null = null;
+
+    // 1) endpoint grab (topmost first)
+    for (let i = segs.length - 1; i >= 0 && !drag; i--) {
+      const s = segs[i];
+      const ends: Array<[number, number, 0 | 1]> = [
+        [r.left + s.x0 * r.width, r.top + s.y0 * r.height, 0],
+        [r.left + s.x1 * r.width, r.top + s.y1 * r.height, 1],
+      ];
+      for (const [ex, ey, end] of ends) {
+        if (Math.hypot(cx - ex, cy - ey) <= HIT) { drag = { id: s.id, end, isNew: false }; break; }
+      }
+    }
+
+    // 2) body click → select only
+    if (!drag) {
+      for (let i = segs.length - 1; i >= 0; i--) {
+        const s = segs[i];
+        const d = distToSeg(cx, cy, r.left + s.x0 * r.width, r.top + s.y0 * r.height, r.left + s.x1 * r.width, r.top + s.y1 * r.height);
+        if (d <= 6) { setSelectedSeg(s.id); return; }
+      }
+    }
+
+    // 3) otherwise start a brand-new segment, dragging its head
+    if (!drag) {
+      const nx = Math.max(0, Math.min(1, (cx - r.left) / r.width));
+      const ny = Math.max(0, Math.min(1, (cy - r.top) / r.height));
+      const id = segUid();
+      const next = [...segs, { id, x0: nx, y0: ny, x1: nx, y1: ny }];
+      // First segment with no PSD shown: keep the plot hidden until release so
+      // the scan doesn't resize out from under the cursor mid-drag.
+      if (segs.length === 0 && !opts.showPsd) setSuppressPlot(true);
+      segmentsRef.current = next;
+      onSegmentsChangeRef.current(next);
+      drag = { id, end: 1, isNew: true };
+    }
+
+    setSelectedSeg(drag.id);
+    setDragging(true);
+    e.preventDefault();
+
+    const move = (ev: MouseEvent) => {
+      const nx = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+      const ny = Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height));
+      const next = segmentsRef.current.map((s) =>
+        s.id !== drag!.id ? s : drag!.end ? { ...s, x1: nx, y1: ny } : { ...s, x0: nx, y0: ny }
+      );
+      segmentsRef.current = next;
+      onSegmentsChangeRef.current(next);
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      setDragging(false);
+      setSuppressPlot(false);
+      // Discard a "new" segment that's really just a click (too short).
+      if (drag!.isNew) {
+        const seg = segmentsRef.current.find((s) => s.id === drag!.id);
+        if (seg && Math.hypot((seg.x1 - seg.x0) * r.width, (seg.y1 - seg.y0) * r.height) < 5) {
+          const next = segmentsRef.current.filter((s) => s.id !== drag!.id);
+          segmentsRef.current = next;
+          onSegmentsChangeRef.current(next);
+          setSelectedSeg(null);
+        }
+      }
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  }
+
+  // True when the cursor is over a draggable endpoint (for the grab cursor).
+  function nearEndpoint(cx: number, cy: number): boolean {
+    const canvas = dataCanvasRef.current;
+    if (!canvas) return false;
+    const r = canvas.getBoundingClientRect();
+    for (const s of segmentsRef.current) {
+      if (Math.hypot(cx - (r.left + s.x0 * r.width), cy - (r.top + s.y0 * r.height)) <= 11) return true;
+      if (Math.hypot(cx - (r.left + s.x1 * r.width), cy - (r.top + s.y1 * r.height)) <= 11) return true;
+    }
+    return false;
+  }
+
   // Track available area in the expanded view so we can size scan + PSD to fit
   useEffect(() => {
     const el = areaRef.current;
@@ -929,20 +1215,21 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onLabelChange, 
   }, []);
 
   // Compute scan dimensions to fit the available area without scrolling.
-  // Layout: [scan (W×H)] [colorbar 62] [gap 16] [PSD (H×H if shown)]  inside areaSize.
-  // PSD is square, sized to scan height. Pad inside the area.
+  // Layout: [scan (W×H)] [colorbar 62] [gap 16] [right column (width = scanH)].
+  // The right column holds the PSD and/or line-trace plot, stacked. It's reserved
+  // whenever either is present.
+  const showRight = opts.showPsd || (hasSegments && !suppressPlot);
   const aspect = record.scanUm[0] / record.scanUm[1];
   const colorbarSlot = 62 + 12; // colorbar width + gap to scan
-  const psdSlot = opts.showPsd ? 16 : 0; // gap to PSD; PSD width = scanH, added below
+  const rightSlot = showRight ? 16 : 0; // gap to right column; column width = scanH
   const innerW = Math.max(0, areaSize.w - 16);
   const innerH = Math.max(0, areaSize.h - 16);
-  // scan_w + colorbar + (gap + scan_h) ≤ innerW   (psd_w = scan_h)
-  // scan_h * aspect + colorbarSlot + psdSlot + (opts.showPsd ? scan_h : 0) ≤ innerW
-  const horizDivisor = aspect + (opts.showPsd ? 1 : 0);
-  const fromW = (innerW - colorbarSlot - psdSlot) / horizDivisor;
+  // scan_h * aspect + colorbarSlot + rightSlot + (showRight ? scan_h : 0) ≤ innerW
+  const horizDivisor = aspect + (showRight ? 1 : 0);
+  const fromW = (innerW - colorbarSlot - rightSlot) / horizDivisor;
   const scanH = Math.max(80, Math.floor(Math.min(innerH, fromW)));
   const scanW = Math.round(scanH * aspect);
-  const psdSide = scanH;
+  const rightW = scanH; // right column width
 
   function showToast(msg: string) {
     setToast(msg);
@@ -995,9 +1282,15 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onLabelChange, 
     const pad = Math.round(20 * k);
     const colorbarW = Math.round(62 * k);
     const colorbarGap = Math.round(8 * k);
-    // PSD panel: square sized to match scan height when present
-    const psdSide = opts.showPsd ? Math.min(scanH, scanW) : 0;
-    const psdGap = opts.showPsd ? Math.round(16 * k) : 0;
+    // Right column: PSD and/or line-profile plot, stacked, sized to scan height.
+    const rightPanels: Array<"psd" | "trace"> = [];
+    if (opts.showPsd) rightPanels.push("psd");
+    if (hasSegments) rightPanels.push("trace");
+    const showRight = rightPanels.length > 0;
+    const rightW = showRight ? Math.min(scanH, scanW) : 0;
+    const rightGap = showRight ? Math.round(16 * k) : 0;
+    const panelGap = rightPanels.length > 1 ? Math.round(14 * k) : 0;
+    const panelH = showRight ? (scanH - (rightPanels.length - 1) * panelGap) / rightPanels.length : 0;
 
     const procParts: string[] = [];
     if (opts.doLines) procParts.push(
@@ -1010,8 +1303,8 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onLabelChange, 
     const procText = procParts.join("  ·  ");
     const footerH = Math.round(42 * k);
 
-    const subTitleHCalc = opts.showPsd ? Math.round(22 * k) : 0;
-    const W = 2 * pad + scanW + colorbarGap + colorbarW + psdGap + psdSide;
+    const subTitleHCalc = showRight ? Math.round(22 * k) : 0;
+    const W = 2 * pad + scanW + colorbarGap + colorbarW + rightGap + rightW;
     const H = 2 * pad + titleH + subTitleHCalc + scanH + statsH + footerH;
     const c = document.createElement("canvas");
     c.width = W; c.height = H;
@@ -1028,20 +1321,28 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onLabelChange, 
     ctx.textBaseline = "middle";
     ctx.fillText(record.label, W / 2, pad + titleH / 2);
 
-    if (opts.showPsd) {
+    if (showRight) {
       ctx.fillStyle = "#333";
       ctx.font = `bold ${Math.round(15 * k)}px Arial, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("Scan", pad + scanBlockW / 2, pad + titleH + subTitleH / 2);
-      const psdX = pad + scanBlockW + psdGap;
-      ctx.fillText("Radial Power Spectral Density", psdX + psdSide / 2, pad + titleH + subTitleH / 2);
+      const rightX = pad + scanBlockW + rightGap;
+      ctx.fillText("Analysis", rightX + rightW / 2, pad + titleH + subTitleH / 2);
     }
 
     const contentY = pad + titleH + subTitleH;
 
     const scanCvs = renderScanForExport(record.z, curW, curH, record.scanUm, -lim, lim, opts.doClip, scanW, opts.colormap);
     ctx.drawImage(scanCvs, pad, contentY, scanW, scanH);
+
+    // Draw the line-profile segments on top of the exported scan.
+    if (hasSegments) {
+      ctx.save();
+      ctx.translate(pad, contentY);
+      drawSegments(ctx, scanW, scanH, segments, null, k);
+      ctx.restore();
+    }
 
     // Colorbar height matches scan height
     ctx.save();
@@ -1064,14 +1365,19 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onLabelChange, 
     ctx.font = `${Math.round(10 * k)}px Arial, sans-serif`;
     ctx.fillText(fileMeta, pad + scanBlockW / 2, statsBaseY + Math.round(26 * k));
 
-    if (opts.showPsd && record.psd) {
-      const psdX = pad + scanBlockW + psdGap;
+    rightPanels.forEach((kind, idx) => {
+      const rightX = pad + scanBlockW + rightGap;
+      const panelY = contentY + idx * (panelH + panelGap);
       ctx.save();
-      ctx.translate(psdX, contentY);
+      ctx.translate(rightX, panelY);
       ctx.scale(k, k);
-      drawPsd(ctx, psdSide / k, psdSide / k, [{ freqs: record.psd.freqs, power: record.psd.power, color: "#2196f3", label: "" }], true);
+      if (kind === "psd" && record.psd) {
+        drawPsd(ctx, rightW / k, panelH / k, [{ freqs: record.psd.freqs, power: record.psd.power, color: "#2196f3", label: "" }], true, undefined, "Radial PSD");
+      } else if (kind === "trace") {
+        drawLineTrace(ctx, rightW / k, panelH / k, traces, true, undefined, "Line profiles");
+      }
       ctx.restore();
-    }
+    });
 
     const footerY = H - footerH;
     ctx.strokeStyle = "#e0e0e0";
@@ -1139,7 +1445,11 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onLabelChange, 
               <div
                 ref={canvasWrapRef}
                 className="card-canvas-wrap expanded-canvas-wrap"
-                style={{ position: "relative", width: scanW, height: scanH }}
+                style={{
+                  position: "relative", width: scanW, height: scanH,
+                  cursor: dragging ? "grabbing" : hoverEndpoint ? "grab" : "crosshair",
+                }}
+                onMouseDown={onCanvasMouseDown}
                 onMouseMove={(e) => {
                   const canvas = dataCanvasRef.current;
                   if (!canvas) return;
@@ -1149,16 +1459,28 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onLabelChange, 
                   const ix = Math.min(curW - 1, Math.max(0, Math.floor(px * curW)));
                   const iy = Math.min(curH - 1, Math.max(0, Math.floor(py * curH)));
                   setCursorH({ cx: e.clientX - r.left, cy: e.clientY - r.top, v: record.z[iy * curW + ix] });
+                  setHoverEndpoint(nearEndpoint(e.clientX, e.clientY));
                 }}
-                onMouseLeave={() => setCursorH(null)}
+                onMouseLeave={() => { setCursorH(null); setHoverEndpoint(false); }}
               >
                 <canvas
                   ref={dataCanvasRef}
                   className="data-canvas"
                 />
                 <canvas ref={scaleBarCanvasRef} className="scalebar-canvas" />
-                <button className="canvas-flip-btn" onClick={onFlip} title="Flip horizontally">⇄</button>
-                <button className="canvas-rotate-btn" onClick={onRotate} title="Rotate 90° clockwise">↻</button>
+                <canvas ref={lineCanvasRef} className="lineprofile-canvas" />
+                {hasSegments && (
+                  <button
+                    className="canvas-clear-traces-btn"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => { onSegmentsChange([]); setSelectedSeg(null); }}
+                    title="Clear all line profiles"
+                  >
+                    <TrashIcon />
+                  </button>
+                )}
+                <button className="canvas-flip-btn" onMouseDown={(e) => e.stopPropagation()} onClick={onFlip} title="Flip horizontally">⇄</button>
+                <button className="canvas-rotate-btn" onMouseDown={(e) => e.stopPropagation()} onClick={onRotate} title="Rotate 90° clockwise">↻</button>
                 {cursorH && (
                   <div className="cursor-readout" style={{ left: cursorH.cx, top: cursorH.cy }}>
                     {fmt(cursorH.v)} nm
@@ -1167,10 +1489,19 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onLabelChange, 
               </div>
               <Colorbar vmin={-lim} vmax={lim} expanded colormap={opts.colormap} />
             </div>
-            {/* PSD to the right — square sized to scan height so it fits without scroll */}
-            {opts.showPsd && scanH > 0 && (
-              <div className="expanded-psd-right" style={{ width: psdSide, height: psdSide }}>
-                <PsdPlot freqs={record.psd.freqs} power={record.psd.power} color="#2196f3" showAxes title="Radial Power Spectral Density" />
+            {/* Right column — PSD and/or line-profile plot, stacked, sized to scan height */}
+            {showRight && scanH > 0 && (
+              <div className="expanded-right-col" style={{ width: rightW, height: scanH }}>
+                {opts.showPsd && (
+                  <div className="expanded-plot-panel">
+                    <PsdPlot freqs={record.psd.freqs} power={record.psd.power} color="#2196f3" showAxes title="Radial Power Spectral Density" />
+                  </div>
+                )}
+                {hasSegments && (
+                  <div className="expanded-plot-panel">
+                    <LineTracePlot traces={traces} showAxes title="Line profiles" />
+                  </div>
+                )}
               </div>
             )}
           </div>

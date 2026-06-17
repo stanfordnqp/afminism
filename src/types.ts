@@ -1,4 +1,5 @@
 import type { ColormapName } from "./colormap";
+import type { LineSegment } from "./lineprofile";
 export type { ColormapName };
 
 export interface ProcessingOptions {
@@ -28,6 +29,7 @@ export interface ScanRecord {
   scanUm: [number, number]; // [x, y] µm
   rotation: number; // 0 | 90 | 180 | 270
   flipX: boolean; // mirror left-right (applied after rotation)
+  segments: LineSegment[]; // user-drawn line-profile segments (display coords)
   isExample?: boolean;
   meta?: string;
   // computed on reprocess:

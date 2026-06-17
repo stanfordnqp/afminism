@@ -582,6 +582,16 @@ input[type="range"] {
   height: 100%;
   pointer-events: none;
 }
+/* Line-profile overlay canvas: drawn segments + arrowheads. Read-only;
+   pointer events are handled on the wrapping div so the height readout works. */
+.lineprofile-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+}
 .card-stats {
   padding: 7px 10px;
   font-size: 11px;
@@ -920,6 +930,21 @@ input[type="range"] {
   background: #fff;
   overflow: hidden;
 }
+/* Right column holding the PSD and/or line-profile plots, stacked. */
+.expanded-right-col {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.expanded-plot-panel {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
 
 /* ── expanded header action buttons ── */
 .exp-action-group {
@@ -949,9 +974,10 @@ input[type="range"] {
 .exp-action-btn:hover:not(:disabled) { background: #f0f0f0; color: #333; }
 .exp-action-btn:disabled { opacity: 0.4; cursor: default; }
 
-/* ── rotate / flip buttons overlaid top-right of canvas ── */
+/* ── rotate / flip / clear-traces buttons overlaid top-right of canvas ── */
 .canvas-rotate-btn,
-.canvas-flip-btn {
+.canvas-flip-btn,
+.canvas-clear-traces-btn {
   position: absolute;
   top: 10px;
   z-index: 10;
@@ -973,12 +999,16 @@ input[type="range"] {
 }
 .canvas-rotate-btn { right: 10px; }
 .canvas-flip-btn { right: 48px; }
+.canvas-clear-traces-btn { right: 86px; }
 .expanded-canvas-wrap:hover .canvas-rotate-btn,
 .card-canvas-wrap:hover .canvas-rotate-btn,
 .expanded-canvas-wrap:hover .canvas-flip-btn,
-.card-canvas-wrap:hover .canvas-flip-btn { opacity: 1; }
+.card-canvas-wrap:hover .canvas-flip-btn,
+.expanded-canvas-wrap:hover .canvas-clear-traces-btn,
+.card-canvas-wrap:hover .canvas-clear-traces-btn { opacity: 1; }
 .canvas-rotate-btn:hover,
-.canvas-flip-btn:hover { background: rgba(0,0,0,0.65); }
+.canvas-flip-btn:hover,
+.canvas-clear-traces-btn:hover { background: rgba(0,0,0,0.65); }
 
 /* ── stats panel (right column in expanded view) ── */
 .expanded-stats-panel {
