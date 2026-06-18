@@ -127,8 +127,15 @@ function parsePsia(
   const aligned = new ArrayBuffer(nPixels * 4);
   new Uint8Array(aligned).set(new Uint8Array(buffer, dataOffset, nPixels * 4));
   const raw = new Float32Array(aligned);
+  // PSIA stores rows bottom-to-top relative to display, so flip vertically on
+  // import to match the instrument's orientation. Gwyddion does the same
+  // unconditionally (psia.c: gwy_data_field_invert(dfield, TRUE, FALSE, FALSE)).
   const nm = new Float32Array(nPixels);
-  for (let j = 0; j < nm.length; j++) nm[j] = raw[j] * qNm + z0Nm;
+  for (let r = 0; r < height; r++) {
+    const src = (height - 1 - r) * width;
+    const dst = r * width;
+    for (let c = 0; c < width; c++) nm[dst + c] = raw[src + c] * qNm + z0Nm;
+  }
 
   const scanUm: [number, number] = (xreal > 0 && yreal > 0)
     ? [xreal, yreal]
