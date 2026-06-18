@@ -50,6 +50,15 @@ export const COLORMAP_LABELS: Record<ColormapName, string> = {
 
 export const COLORMAP_ORDER: ColormapName[] = ["gray", "gwynet", "diverging"];
 
+// Out-of-range "saturation" colors: pixels below vmin get `under`, above vmax
+// get `over`. Chosen to stand out from each colormap — blue/red for the warm
+// maps, green/magenta for diverging (whose own ends are already blue/red).
+export const SATURATION: Record<ColormapName, { under: [number, number, number]; over: [number, number, number] }> = {
+  gray:      { under: [30, 90, 255], over: [255, 40, 30] },
+  gwynet:    { under: [30, 90, 255], over: [255, 40, 30] },
+  diverging: { under: [50, 25, 110], over: [255, 100, 180] },
+};
+
 function lut(cm: ColormapName = "gwynet"): Uint8Array {
   return LUTS[cm];
 }
@@ -60,28 +69,24 @@ export function toImageData(
   height: number,
   vmin: number,
   vmax: number,
-  clip: boolean,
   colormap: ColormapName = "gwynet"
 ): ImageData {
   const L = lut(colormap);
+  const { under, over } = SATURATION[colormap];
   const n = width * height;
   const pixels = new Uint8ClampedArray(n * 4);
   const range = vmax - vmin || 1;
   for (let i = 0; i < n; i++) {
     const v = z[i];
-    let r: number, g: number, b: number;
-    if (clip && v < vmin) {
-      r = 0; g = 0; b = 220;
-    } else if (clip && v > vmax) {
-      r = 220; g = 0; b = 0;
+    // Out-of-range pixels saturate to distinct marker colors.
+    if (v < vmin) {
+      pixels[i * 4 + 0] = under[0]; pixels[i * 4 + 1] = under[1]; pixels[i * 4 + 2] = under[2];
+    } else if (v > vmax) {
+      pixels[i * 4 + 0] = over[0]; pixels[i * 4 + 1] = over[1]; pixels[i * 4 + 2] = over[2];
     } else {
-      const t = Math.max(0, Math.min(1, (v - vmin) / range));
-      const idx = Math.round(t * 255);
-      r = L[idx * 3]; g = L[idx * 3 + 1]; b = L[idx * 3 + 2];
+      const idx = Math.round(((v - vmin) / range) * 255);
+      pixels[i * 4 + 0] = L[idx * 3]; pixels[i * 4 + 1] = L[idx * 3 + 1]; pixels[i * 4 + 2] = L[idx * 3 + 2];
     }
-    pixels[i * 4 + 0] = r;
-    pixels[i * 4 + 1] = g;
-    pixels[i * 4 + 2] = b;
     pixels[i * 4 + 3] = 255;
   }
   return new ImageData(pixels, width, height);
@@ -146,13 +151,12 @@ export function renderScanForExport(
   scanUm: [number, number],
   vmin: number,
   vmax: number,
-  doClip: boolean,
   exportW: number,
   colormap: ColormapName = "gwynet",
 ): HTMLCanvasElement {
   // Output canvas matches the physical aspect ratio of the scan.
   const exportH = Math.round(exportW * (scanUm[1] / scanUm[0]));
-  const img = toImageData(z, width, height, vmin, vmax, doClip, colormap);
+  const img = toImageData(z, width, height, vmin, vmax, colormap);
   const src = document.createElement("canvas");
   src.width = width; src.height = height;
   src.getContext("2d")!.putImageData(img, 0, 0);
@@ -200,6 +204,37 @@ export function drawColormapStripH(
     const t = x / Math.max(1, w - 1);
     const idx = Math.round(t * 255);
     const r = L[idx * 3], g = L[idx * 3 + 1], b = L[idx * 3 + 2];
+    for (let y = 0; y < h; y++) {
+      const i = (y * w + x) * 4;
+      imgData.data[i] = r; imgData.data[i + 1] = g; imgData.data[i + 2] = b; imgData.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+// Horizontal strip showing the colormap mapped through a window [low, high]
+// (fractions of the track). Outside the window clamps to the end colors —
+// mirrors exactly how the image renders, so the control previews the effect.
+export function drawClimStrip(
+  ctx: CanvasRenderingContext2D,
+  w: number, h: number,
+  colormap: ColormapName,
+  low: number, high: number
+): void {
+  if (w <= 0 || h <= 0) return;
+  const L = lut(colormap);
+  const { under, over } = SATURATION[colormap];
+  const span = high - low || 1;
+  const imgData = ctx.createImageData(w, h);
+  for (let x = 0; x < w; x++) {
+    const f = x / Math.max(1, w - 1);
+    let r: number, g: number, b: number;
+    if (f < low) { [r, g, b] = under; }
+    else if (f > high) { [r, g, b] = over; }
+    else {
+      const idx = Math.round(((f - low) / span) * 255);
+      r = L[idx * 3]; g = L[idx * 3 + 1]; b = L[idx * 3 + 2];
+    }
     for (let y = 0; y < h; y++) {
       const i = (y * w + x) * 4;
       imgData.data[i] = r; imgData.data[i + 1] = g; imgData.data[i + 2] = b; imgData.data[i + 3] = 255;

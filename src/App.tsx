@@ -16,7 +16,7 @@ import Sparkles from "./Sparkles";
 import RainbowTrail from "./RainbowTrail";
 import FeedbackButton from "./FeedbackButton";
 import { parseParkTiff } from "./tiff";
-import { reprocess, computeRms, currentDims, colorRange } from "./processing";
+import { reprocess, computeRms, currentDims, colorRange, displayRange } from "./processing";
 import { computePSD } from "./psd";
 import { toImageData, renderScanForExport, drawScaleBar, drawColorbar } from "./colormap";
 import Colorbar from "./Colorbar";
@@ -42,6 +42,8 @@ const DEFAULT_OPTS: ProcessingOptions = {
   climSigma: 5,
   climMin: 0.5,
   climMax: 20,
+  climLow: 0,
+  climHigh: 1,
   columns: 2,
   colormap: "gwynet" as const,
   showPsd: false,
@@ -105,7 +107,7 @@ export default function App() {
     downloadSession(id)
       .then(({ scans, opts }) => {
         setScans(scans);
-        setOpts(opts);
+        setOpts({ ...DEFAULT_OPTS, ...opts }); // backfill fields added since the link was made
       })
       .catch((e) => {
         console.error("Failed to load shared session:", e);
@@ -400,10 +402,10 @@ export default function App() {
       const scanH = Math.round(scanW * (r.scanUm[1] / r.scanUm[0]));
       // Top-align scan within its row (rows can have heterogeneous heights)
 
-      const [vmin, vmax] = colorRange(r.z, opts.doClip, opts.climSigma, r.rmsClipped);
+      const [vmin, vmax] = displayRange(r.z, opts, r.rmsClipped);
 
       const [curW, curH] = currentDims(r.width, r.height, r.rotation);
-      const scanCanvas = renderScanForExport(r.z, curW, curH, r.scanUm, vmin, vmax, opts.doClip, scanW, opts.colormap);
+      const scanCanvas = renderScanForExport(r.z, curW, curH, r.scanUm, vmin, vmax, scanW, opts.colormap);
       ctx.drawImage(scanCanvas, x, y + titleH, scanW, scanH);
       if (r.segments.length) {
         ctx.save();
@@ -955,7 +957,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onSegmentsChang
       selectedSegId, onSelectSeg, showPsd: opts.showPsd, enableSuppress: true,
     });
 
-  const [vmin, vmax] = colorRange(record.z, opts.doClip, opts.climSigma, record.rmsClipped);
+  const [vmin, vmax] = displayRange(record.z, opts, record.rmsClipped);
 
   // Current (post-rotation) pixel grid dimensions of record.z
   const [curW, curH] = currentDims(record.width, record.height, record.rotation);
@@ -965,9 +967,9 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onSegmentsChang
     if (!canvas) return;
     canvas.width = curW;
     canvas.height = curH;
-    const img = toImageData(record.z, curW, curH, vmin, vmax, opts.doClip, opts.colormap);
+    const img = toImageData(record.z, curW, curH, vmin, vmax, opts.colormap);
     canvas.getContext("2d")!.putImageData(img, 0, 0);
-  }, [record.z, curW, curH, vmin, vmax, opts.doClip]);
+  }, [record.z, curW, curH, vmin, vmax, opts.colormap]);
 
   useEffect(() => {
     const data = dataCanvasRef.current;
@@ -1049,9 +1051,9 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onSegmentsChang
         // Raw data is unrotated; use its native pixel grid and scan orientation.
         const rawScanUm: [number, number] = record.rotation % 180 === 90
           ? [record.scanUm[1], record.scanUm[0]] : record.scanUm;
-        c = renderScanForExport(record.zRaw, record.width, record.height, rawScanUm, rawMin, rawMax, false, exportW, opts.colormap);
+        c = renderScanForExport(record.zRaw, record.width, record.height, rawScanUm, rawMin, rawMax, exportW, opts.colormap);
       } else {
-        c = renderScanForExport(record.z, curW, curH, record.scanUm, vmin, vmax, opts.doClip, exportW, opts.colormap);
+        c = renderScanForExport(record.z, curW, curH, record.scanUm, vmin, vmax, exportW, opts.colormap);
       }
       const a = document.createElement("a");
       a.href = c.toDataURL("image/png");
@@ -1122,7 +1124,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onSegmentsChang
 
     const contentY = pad + titleH + subTitleH;
 
-    const scanCvs = renderScanForExport(record.z, curW, curH, record.scanUm, vmin, vmax, opts.doClip, scanW, opts.colormap);
+    const scanCvs = renderScanForExport(record.z, curW, curH, record.scanUm, vmin, vmax, scanW, opts.colormap);
     ctx.drawImage(scanCvs, pad, contentY, scanW, scanH);
 
     // Draw the line-profile segments on top of the exported scan.

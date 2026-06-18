@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { drawColormapStripH, COLORMAP_LABELS, COLORMAP_ORDER } from "./colormap";
 import type { ColormapName } from "./colormap";
 import type { ProcessingOptions } from "./types";
+import ClimControl from "./ClimControl";
 
 function ColormapSwatch({ name, selected, onClick }: { name: ColormapName; selected: boolean; onClick: () => void }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -182,14 +183,14 @@ export default function Sidebar({ open, onToggle, opts, onChange, isExpanded, vi
             <input type="checkbox" id="doClip" checked={opts.doClip}
               onChange={(e) => onChange({ doClip: e.target.checked })} />
             <label htmlFor="doClip">Clip outliers</label>
-            <InfoTip text="Excludes pixels beyond ±Nσ of the mean from the color scale — they are shown in red (high) or blue (low). The colormap then spans the min–max of the remaining surface, making real features more visible." />
+            <InfoTip text="Excludes pixels beyond ±Nσ of the mean when setting the color range, so a few spikes don't dominate the scale. The colormap then spans the min–max of the remaining surface (outliers show in the saturation colors), making real features more visible." />
           </div>
           </>
           )}
 
           {opts.doClip && viewMode !== "psd" && (
             <div className="clim-block">
-              <div className="clim-desc">Clip threshold (σ) — out of range shown in red/blue</div>
+              <div className="clim-desc">Clip threshold (σ) — spikes beyond ±Nσ excluded from the range</div>
               <input type="range" min={opts.climMin} max={opts.climMax} step={0.25}
                 value={opts.climSigma}
                 onChange={(e) => onChange({ climSigma: parseFloat(e.target.value) })}
@@ -224,12 +225,18 @@ export default function Sidebar({ open, onToggle, opts, onChange, isExpanded, vi
           )}
         </div>
 
-        {/* ── Colormap ── */}
+        {/* ── Color scale ── */}
         {viewMode !== "psd" && (
           <>
             <div className="sidebar-divider" />
             <div className="sidebar-section">
-              <div className="sidebar-section-label">Colormap</div>
+              <div className="sidebar-section-label">Color scale</div>
+              <ClimControl
+                colormap={opts.colormap}
+                low={opts.climLow}
+                high={opts.climHigh}
+                onChange={(climLow, climHigh) => onChange({ climLow, climHigh })}
+              />
               <div className="cmap-grid">
                 {COLORMAP_ORDER.map((cm) => (
                   <ColormapSwatch key={cm} name={cm} selected={opts.colormap === cm} onClick={() => onChange({ colormap: cm })} />

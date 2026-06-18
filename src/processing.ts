@@ -250,6 +250,20 @@ export function colorRange(
   return [min, max];
 }
 
+// The color scale actually shown: the auto/clipped range narrowed and shifted
+// by the manual window [climLow, climHigh] (fractions of the auto range).
+export function displayRange(
+  z: Float32Array,
+  opts: { doClip: boolean; climSigma: number; climLow?: number; climHigh?: number },
+  rmsClipped: number
+): [number, number] {
+  const [a, b] = colorRange(z, opts.doClip, opts.climSigma, rmsClipped);
+  const span = b - a || 1;
+  const low = opts.climLow ?? 0;
+  const high = opts.climHigh ?? 1;
+  return [a + low * span, a + high * span];
+}
+
 // Rotate k×90° clockwise. Returns rotated array; dimensions swap on odd k
 // (use currentDims to get the resulting width/height).
 function rot90cw(z: Float32Array, width: number, height: number, k: number): Float32Array {

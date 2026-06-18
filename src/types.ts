@@ -14,6 +14,11 @@ export interface ProcessingOptions {
   climSigma: number;
   climMin: number; // slider range min
   climMax: number; // slider range max
+  // Manual color-scale window, as fractions [0,1] of the auto/clipped range.
+  // 0/1 = full range; narrow + shift to bring out fine detail. Values outside
+  // the window clamp to the end colors.
+  climLow: number;
+  climHigh: number;
   columns: number;
   colormap: ColormapName;
   showPsd: boolean;
