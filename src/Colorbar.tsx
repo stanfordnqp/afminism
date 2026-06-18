@@ -9,7 +9,7 @@ interface Props {
   colormap?: ColormapName;
 }
 
-export default function Colorbar({ vmin, vmax, expanded = false, colormap = "afmhot" }: Props) {
+export default function Colorbar({ vmin, vmax, expanded = false, colormap = "gwynet" }: Props) {
   const stripRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {

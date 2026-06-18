@@ -1,6 +1,6 @@
 // Colormaps — each a 256×3 Uint8Array LUT.
 
-export type ColormapName = "gray" | "viridis" | "afmhot" | "diverging";
+export type ColormapName = "gray" | "gwynet" | "diverging";
 
 // Piecewise-linear interpolation between control points to build a 256-entry LUT.
 function makeLut(stops: [number, number, number, number][]): Uint8Array {
@@ -24,23 +24,13 @@ const LUTS: Record<ColormapName, Uint8Array> = {
     [0, 0, 0, 0],
     [1, 255, 255, 255],
   ]),
-  viridis: makeLut([
-    [0,     68,   1,  84],
-    [0.125, 72,  33, 115],
-    [0.25,  59,  82, 139],
-    [0.375, 44, 113, 142],
-    [0.5,   33, 145, 140],
-    [0.625, 53, 183, 121],
-    [0.75,  94, 201,  98],
-    [0.875,175, 220,  57],
-    [1,    253, 231,  37],
-  ]),
-  afmhot: makeLut([
-    [0,      0,   0,   0],
-    [0.25,  128,   0,   0],
-    [0.5,   255, 128,   0],
-    [0.75,  255, 255, 128],
-    [1,     255, 255, 255],
+  // Gwyddion's signature "Gwyddion.net": black → reddish-brown → tan → white.
+  // Exact Gwyddion control points.
+  gwynet: makeLut([
+    [0,           0,   0,   0],
+    [0.344671,  168,  40,  15],
+    [0.687075,  243, 194,  93],
+    [1,         255, 255, 255],
   ]),
   // Diverging: blue → white (at center) → red. For symmetric data around 0.
   diverging: makeLut([
@@ -54,14 +44,13 @@ const LUTS: Record<ColormapName, Uint8Array> = {
 
 export const COLORMAP_LABELS: Record<ColormapName, string> = {
   gray:      "Gray",
-  viridis:   "Viridis",
-  afmhot:   "AFM Hot",
+  gwynet:    "Sepia",
   diverging: "Diverging",
 };
 
-export const COLORMAP_ORDER: ColormapName[] = ["gray", "viridis", "afmhot", "diverging"];
+export const COLORMAP_ORDER: ColormapName[] = ["gray", "gwynet", "diverging"];
 
-function lut(cm: ColormapName = "afmhot"): Uint8Array {
+function lut(cm: ColormapName = "gwynet"): Uint8Array {
   return LUTS[cm];
 }
 
@@ -72,7 +61,7 @@ export function toImageData(
   vmin: number,
   vmax: number,
   clip: boolean,
-  colormap: ColormapName = "afmhot"
+  colormap: ColormapName = "gwynet"
 ): ImageData {
   const L = lut(colormap);
   const n = width * height;
@@ -159,7 +148,7 @@ export function renderScanForExport(
   vmax: number,
   doClip: boolean,
   exportW: number,
-  colormap: ColormapName = "afmhot",
+  colormap: ColormapName = "gwynet",
 ): HTMLCanvasElement {
   // Output canvas matches the physical aspect ratio of the scan.
   const exportH = Math.round(exportW * (scanUm[1] / scanUm[0]));
@@ -181,7 +170,7 @@ export function renderScanForExport(
 export function drawColormapStrip(
   ctx: CanvasRenderingContext2D,
   w: number, h: number,
-  colormap: ColormapName = "afmhot"
+  colormap: ColormapName = "gwynet"
 ): void {
   if (w <= 0 || h <= 0) return;
   const L = lut(colormap);
@@ -202,7 +191,7 @@ export function drawColormapStrip(
 export function drawColormapStripH(
   ctx: CanvasRenderingContext2D,
   w: number, h: number,
-  colormap: ColormapName = "afmhot"
+  colormap: ColormapName = "gwynet"
 ): void {
   if (w <= 0 || h <= 0) return;
   const L = lut(colormap);
@@ -227,7 +216,7 @@ export function drawColorbar(
   totalW: number,
   totalH: number,
   _dark = false,
-  colormap: ColormapName = "afmhot"
+  colormap: ColormapName = "gwynet"
 ): void {
   const stripW = 18;
   const labelH = 14;
