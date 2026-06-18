@@ -181,15 +181,15 @@ export default function Sidebar({ open, onToggle, opts, onChange, isExpanded, vi
           <div className="sidebar-row">
             <input type="checkbox" id="doClip" checked={opts.doClip}
               onChange={(e) => onChange({ doClip: e.target.checked })} />
-            <label htmlFor="doClip">Clip color range</label>
-            <InfoTip text="Limits the colormap to ±Nσ around the mean. Pixels outside this range are shown in red (high) or blue (low), making features within the surface more visible." />
+            <label htmlFor="doClip">Clip outliers</label>
+            <InfoTip text="Excludes pixels beyond ±Nσ of the mean from the color scale — they are shown in red (high) or blue (low). The colormap then spans the min–max of the remaining surface, making real features more visible." />
           </div>
           </>
           )}
 
           {opts.doClip && viewMode !== "psd" && (
             <div className="clim-block">
-              <div className="clim-desc">Color range (σ) — out of range shown in red/blue</div>
+              <div className="clim-desc">Clip threshold (σ) — out of range shown in red/blue</div>
               <input type="range" min={opts.climMin} max={opts.climMax} step={0.25}
                 value={opts.climSigma}
                 onChange={(e) => onChange({ climSigma: parseFloat(e.target.value) })}

@@ -16,7 +16,7 @@ import Sparkles from "./Sparkles";
 import RainbowTrail from "./RainbowTrail";
 import FeedbackButton from "./FeedbackButton";
 import { parseParkTiff } from "./tiff";
-import { reprocess, computeRms, currentDims } from "./processing";
+import { reprocess, computeRms, currentDims, colorRange } from "./processing";
 import { computePSD } from "./psd";
 import { toImageData, renderScanForExport, drawScaleBar, drawColorbar } from "./colormap";
 import Colorbar from "./Colorbar";
@@ -358,7 +358,7 @@ export default function App() {
         : "Row leveling (median)"
     );
     if (opts.doPoly) procParts.push(`2D level order ${opts.polyOrder} (σ = ${opts.polySigma})`);
-    if (opts.doClip) procParts.push(`Color range ±${opts.climSigma}σ`);
+    if (opts.doClip) procParts.push(`Clipped at ±${opts.climSigma}σ`);
     const procText = procParts.join("  ·  ");
     const footerH = Math.round(42 * k);
 
@@ -400,12 +400,10 @@ export default function App() {
       const scanH = Math.round(scanW * (r.scanUm[1] / r.scanUm[0]));
       // Top-align scan within its row (rows can have heterogeneous heights)
 
-      let maxAbs = 0;
-      for (let j = 0; j < r.z.length; j++) if (Math.abs(r.z[j]) > maxAbs) maxAbs = Math.abs(r.z[j]);
-      const lim = opts.doClip ? opts.climSigma * r.rmsClipped : maxAbs || 1;
+      const [vmin, vmax] = colorRange(r.z, opts.doClip, opts.climSigma, r.rmsClipped);
 
       const [curW, curH] = currentDims(r.width, r.height, r.rotation);
-      const scanCanvas = renderScanForExport(r.z, curW, curH, r.scanUm, -lim, lim, opts.doClip, scanW, opts.colormap);
+      const scanCanvas = renderScanForExport(r.z, curW, curH, r.scanUm, vmin, vmax, opts.doClip, scanW, opts.colormap);
       ctx.drawImage(scanCanvas, x, y + titleH, scanW, scanH);
       if (r.segments.length) {
         ctx.save();
@@ -418,7 +416,7 @@ export default function App() {
       ctx.save();
       ctx.translate(x + scanW + colorbarGap, y + titleH);
       ctx.scale(k, k);
-      drawColorbar(ctx, -lim, lim, 62, scanH / k, false, opts.colormap);
+      drawColorbar(ctx, vmin, vmax, 62, scanH / k, false, opts.colormap);
       ctx.restore();
 
       ctx.fillStyle = "#111";
@@ -957,9 +955,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onSegmentsChang
       selectedSegId, onSelectSeg, showPsd: opts.showPsd, enableSuppress: true,
     });
 
-  let maxAbs = 0;
-  for (let j = 0; j < record.z.length; j++) if (Math.abs(record.z[j]) > maxAbs) maxAbs = Math.abs(record.z[j]);
-  const lim = opts.doClip ? opts.climSigma * record.rmsClipped : maxAbs || 1;
+  const [vmin, vmax] = colorRange(record.z, opts.doClip, opts.climSigma, record.rmsClipped);
 
   // Current (post-rotation) pixel grid dimensions of record.z
   const [curW, curH] = currentDims(record.width, record.height, record.rotation);
@@ -969,9 +965,9 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onSegmentsChang
     if (!canvas) return;
     canvas.width = curW;
     canvas.height = curH;
-    const img = toImageData(record.z, curW, curH, -lim, lim, opts.doClip, opts.colormap);
+    const img = toImageData(record.z, curW, curH, vmin, vmax, opts.doClip, opts.colormap);
     canvas.getContext("2d")!.putImageData(img, 0, 0);
-  }, [record.z, curW, curH, lim, opts.doClip]);
+  }, [record.z, curW, curH, vmin, vmax, opts.doClip]);
 
   useEffect(() => {
     const data = dataCanvasRef.current;
@@ -1049,14 +1045,13 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onSegmentsChang
       const exportW = 1200;
       let c: HTMLCanvasElement;
       if (type === "raw") {
-        let rawMax = 0;
-        for (let j = 0; j < record.zRaw.length; j++) if (Math.abs(record.zRaw[j]) > rawMax) rawMax = Math.abs(record.zRaw[j]);
+        const [rawMin, rawMax] = colorRange(record.zRaw, false, 0, 0);
         // Raw data is unrotated; use its native pixel grid and scan orientation.
         const rawScanUm: [number, number] = record.rotation % 180 === 90
           ? [record.scanUm[1], record.scanUm[0]] : record.scanUm;
-        c = renderScanForExport(record.zRaw, record.width, record.height, rawScanUm, -rawMax, rawMax, false, exportW, opts.colormap);
+        c = renderScanForExport(record.zRaw, record.width, record.height, rawScanUm, rawMin, rawMax, false, exportW, opts.colormap);
       } else {
-        c = renderScanForExport(record.z, curW, curH, record.scanUm, -lim, lim, opts.doClip, exportW, opts.colormap);
+        c = renderScanForExport(record.z, curW, curH, record.scanUm, vmin, vmax, opts.doClip, exportW, opts.colormap);
       }
       const a = document.createElement("a");
       a.href = c.toDataURL("image/png");
@@ -1095,7 +1090,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onSegmentsChang
         : "Row leveling (median)"
     );
     if (opts.doPoly) procParts.push(`2D level order ${opts.polyOrder} (σ = ${opts.polySigma})`);
-    if (opts.doClip) procParts.push(`Color range ±${opts.climSigma}σ`);
+    if (opts.doClip) procParts.push(`Clipped at ±${opts.climSigma}σ`);
     const procText = procParts.join("  ·  ");
     const footerH = Math.round(42 * k);
 
@@ -1127,7 +1122,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onSegmentsChang
 
     const contentY = pad + titleH + subTitleH;
 
-    const scanCvs = renderScanForExport(record.z, curW, curH, record.scanUm, -lim, lim, opts.doClip, scanW, opts.colormap);
+    const scanCvs = renderScanForExport(record.z, curW, curH, record.scanUm, vmin, vmax, opts.doClip, scanW, opts.colormap);
     ctx.drawImage(scanCvs, pad, contentY, scanW, scanH);
 
     // Draw the line-profile segments on top of the exported scan.
@@ -1142,7 +1137,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onSegmentsChang
     ctx.save();
     ctx.translate(pad + scanW + colorbarGap, contentY);
     ctx.scale(k, k);
-    drawColorbar(ctx, -lim, lim, 62, scanH / k, false, opts.colormap);
+    drawColorbar(ctx, vmin, vmax, 62, scanH / k, false, opts.colormap);
     ctx.restore();
 
     const parts = [`${record.scanUm[0]}×${record.scanUm[1]} µm`, `Rq = ${fmt(record.rms)} nm`];
@@ -1278,7 +1273,7 @@ function ExpandedView({ record, opts, onClose, onRotate, onFlip, onSegmentsChang
                   </div>
                 )}
               </div>
-              <Colorbar vmin={-lim} vmax={lim} expanded colormap={opts.colormap} />
+              <Colorbar vmin={vmin} vmax={vmax} expanded colormap={opts.colormap} />
             </div>
             {/* Right column — PSD and/or line-profile plot, stacked, sized to scan height */}
             {showRight && scanH > 0 && (

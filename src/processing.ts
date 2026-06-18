@@ -230,6 +230,26 @@ export function computeRms(
   return { rms, rmsClipped: Math.sqrt(sum2c / cnt), ptp };
 }
 
+// Color scale endpoints [vmin, vmax]. Normal min→max of the data; when clipping
+// is on, the range spans the min/max of the pixels surviving the σ-clip, so
+// outlier spikes (shown red/blue) don't blow out the scale. Not symmetric.
+export function colorRange(
+  z: Float32Array,
+  doClip: boolean,
+  climSigma: number,
+  rmsClipped: number
+): [number, number] {
+  const thr = climSigma * rmsClipped;
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < z.length; i++) {
+    if (doClip && Math.abs(z[i]) > thr) continue;
+    if (z[i] < min) min = z[i];
+    if (z[i] > max) max = z[i];
+  }
+  if (min > max) return [0, 1]; // no pixels survived (flat/empty)
+  return [min, max];
+}
+
 // Rotate k×90° clockwise. Returns rotated array; dimensions swap on odd k
 // (use currentDims to get the resulting width/height).
 function rot90cw(z: Float32Array, width: number, height: number, k: number): Float32Array {

@@ -4,7 +4,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { ScanRecord, ProcessingOptions } from "./types";
 import type { LineSegment } from "./lineprofile";
 import { toImageData, drawScaleBar } from "./colormap";
-import { currentDims } from "./processing";
+import { currentDims, colorRange } from "./processing";
 import { useLineProfiles } from "./useLineProfiles";
 import Colorbar from "./Colorbar";
 import PsdPlot from "./PsdPlot";
@@ -50,10 +50,8 @@ export default function ScanCard({
   };
   const setRef = isOverlay ? undefined : sortable.setNodeRef;
 
-  // ── compute clim ──────────────────────────────────────────────────────────
-  let maxAbs = 0;
-  for (let j = 0; j < record.z.length; j++) if (Math.abs(record.z[j]) > maxAbs) maxAbs = Math.abs(record.z[j]);
-  const lim = opts.doClip ? opts.climSigma * record.rmsClipped : maxAbs || 1;
+  // ── compute color range ────────────────────────────────────────────────────
+  const [vmin, vmax] = colorRange(record.z, opts.doClip, opts.climSigma, record.rmsClipped);
 
   // Current (post-rotation) pixel grid dimensions of record.z
   const [curW, curH] = currentDims(record.width, record.height, record.rotation);
@@ -64,9 +62,9 @@ export default function ScanCard({
     if (!canvas) return;
     canvas.width = curW;
     canvas.height = curH;
-    const img = toImageData(record.z, curW, curH, -lim, lim, opts.doClip, opts.colormap);
+    const img = toImageData(record.z, curW, curH, vmin, vmax, opts.doClip, opts.colormap);
     canvas.getContext("2d")!.putImageData(img, 0, 0);
-  }, [record.z, curW, curH, lim, opts.doClip, opts.colormap]);
+  }, [record.z, curW, curH, vmin, vmax, opts.doClip, opts.colormap]);
 
   // ── render scale bar on HiDPI overlay canvas via ResizeObserver ───────────
   useEffect(() => {
@@ -169,7 +167,7 @@ export default function ScanCard({
               </div>
             )}
           </div>
-          <Colorbar vmin={-lim} vmax={lim} colormap={opts.colormap} />
+          <Colorbar vmin={vmin} vmax={vmax} colormap={opts.colormap} />
         </div>
         {showPsd && (
           <div className="psd-panel">
