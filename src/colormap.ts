@@ -135,7 +135,8 @@ export function drawScaleBar(
   ctx.lineTo(x2, yLine);
   ctx.stroke();
 
-  const label = barUm < 1 ? `${barUm * 1000} nm` : `${barUm} \u00b5m`;
+  // Round to strip float noise (e.g. 0.3 \u00b5m * 1000 \u2192 300.00000000000006).
+  const label = barUm < 1 ? `${Math.round(barUm * 1000)} nm` : `${Math.round(barUm)} \u00b5m`;
   ctx.fillStyle = "white";
   ctx.font = `normal bold ${Math.round(ref * 0.03)}px Arial, "Helvetica Neue", sans-serif`;
   ctx.textAlign = "center";
