@@ -3,7 +3,13 @@ import type { ScanRecord } from "./types";
 import PsdPlot, { drawPsd } from "./PsdPlot";
 import type { PsdSeries } from "./PsdPlot";
 
-export const PALETTE = ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#a65628"];
+// The golden angle keeps neighboring series far apart while avoiding a fixed
+// palette that repeats once more scans are added. Existing series keep their
+// color when the list grows because the color depends only on the index.
+export function psdSeriesColor(index: number): string {
+  const hue = (index * 137.508) % 360;
+  return `hsl(${hue.toFixed(1)}, 65%, 44%)`;
+}
 
 interface Props {
   scans: ScanRecord[];
@@ -74,7 +80,7 @@ export default function PsdSummaryView({ scans, onDrop, onSizeChange, title, onT
   const allSeries: PsdSeries[] = scans.map((s, i) => ({
     freqs: s.psd.freqs,
     power: s.psd.power,
-    color: PALETTE[i % PALETTE.length],
+    color: psdSeriesColor(i),
     label: s.label,
   }));
 
@@ -119,7 +125,7 @@ export function buildPsdSummaryCanvas(scans: ScanRecord[], W: number, H: number,
   ctx.scale(dpr, dpr);
   const allSeries: PsdSeries[] = scans.map((s, i) => ({
     freqs: s.psd.freqs, power: s.psd.power,
-    color: PALETTE[i % PALETTE.length], label: s.label,
+    color: psdSeriesColor(i), label: s.label,
   }));
   drawPsd(ctx, W, H, allSeries, true, undefined, title);
   return canvas;
