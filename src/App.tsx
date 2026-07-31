@@ -340,7 +340,9 @@ export default function App() {
     // SCAN_PX is the actual output pixel WIDTH of each scan subplot.
     // Each scan's height = scanW · (scanUm[1] / scanUm[0]) so rectangular
     // scans keep their physical aspect ratio in the figure.
-    const SCAN_PX = 1200;
+    // Keep publication text crisp after a many-column figure is scaled down.
+    // The total PNG grows with the grid because every subplot gets this budget.
+    const SCAN_PX = 2400;
     const k = SCAN_PX / 700;
     const scanW = SCAN_PX;
     const titleH = Math.round(36 * k);
