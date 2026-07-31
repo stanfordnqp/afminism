@@ -168,8 +168,9 @@ export default function App() {
     return () => { obs.disconnect(); el.removeEventListener("wheel", onWheel); };
   }, [viewMode, expandedId]);
 
-  // Reset zoom when scan count or column count changes — fit to viewport again
-  useEffect(() => { setGridZoom(1); }, [scans.length, opts.columns, opts.showPsd]);
+  // Layout controls request a fresh fit, but adding/removing scans must preserve
+  // the user's current zoom level.
+  useEffect(() => { setGridZoom(1); }, [opts.columns, opts.showPsd]);
 
   // ── processing ────────────────────────────────────────────────────────────
 
