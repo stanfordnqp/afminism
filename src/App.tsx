@@ -86,7 +86,7 @@ export default function App() {
   const gridRef = useRef<HTMLDivElement>(null);
   const gridScrollRestoreRef = useRef<{ left: number; top: number } | null>(null);
   const gridZoomOriginRef = useRef<{
-    element: HTMLElement;
+    element: Element;
     xRatio: number;
     yRatio: number;
     clientX: number;
@@ -214,7 +214,22 @@ export default function App() {
         const paddingLeft = parseFloat(getComputedStyle(dropZone).paddingLeft) || 0;
         setGridMarginLeft(gridRect.left - elRect.left + dropZone.scrollLeft - paddingLeft);
       }
-      const target = (e.target as Element).closest<HTMLElement>(".card-canvas-wrap") ?? gridRef.current;
+      const eventTarget = e.target as Element;
+      let target: Element | null = eventTarget.closest(".card-canvas-wrap")
+        ?? (grid?.contains(eventTarget) ? eventTarget : grid);
+      if (target === grid && grid) {
+        let nearestDistance = Infinity;
+        for (const card of grid.querySelectorAll(".scan-card")) {
+          const rect = card.getBoundingClientRect();
+          const dx = Math.max(rect.left - e.clientX, 0, e.clientX - rect.right);
+          const dy = Math.max(rect.top - e.clientY, 0, e.clientY - rect.bottom);
+          const distance = dx * dx + dy * dy;
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            target = card;
+          }
+        }
+      }
       if (target) {
         const rect = target.getBoundingClientRect();
         gridZoomOriginRef.current = {
