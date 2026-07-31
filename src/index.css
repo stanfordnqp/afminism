@@ -405,6 +405,9 @@ input[type="range"] {
 .card-grid {
   display: grid;
   gap: 16px;
+  /* Retained scroll-space must remain empty space, not stretch grid tracks. */
+  align-content: start;
+  justify-content: start;
   /* Each column = canvas size + colorbar (52px). max-content + margin auto
      centers the grid when it fits, and lets it overflow naturally (scrollable
      in both directions, no left-side clipping) when zoomed in. */
