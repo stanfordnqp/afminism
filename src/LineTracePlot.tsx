@@ -18,25 +18,32 @@ function niceStep(range: number, maxTicks: number): number {
   return step * mag;
 }
 
-function linTicks(lo: number, hi: number, availPx: number): number[] {
+export function linTicks(lo: number, hi: number, availPx: number): number[] {
   if (!(hi > lo)) return [lo];
   const maxTicks = Math.max(2, Math.floor(availPx / 44));
-  const step = niceStep(hi - lo, maxTicks);
-  const ticks: number[] = [];
-  const start = Math.ceil(lo / step - 1e-6) * step;
-  for (let v = start; v <= hi + step * 1e-6; v += step) {
-    ticks.push(Math.abs(v) < step * 1e-9 ? 0 : v);
+  let step = niceStep(hi - lo, maxTicks);
+  let ticks: number[] = [];
+  for (let attempt = 0; attempt < 12; attempt++) {
+    ticks = [];
+    const start = Math.ceil(lo / step - 1e-6) * step;
+    for (let v = start; v <= hi + step * 1e-6; v += step) {
+      ticks.push(Math.abs(v) < step * 1e-9 ? 0 : v);
+    }
+    if (ticks.length >= 2) break;
+
+    // A nice step can straddle the range with only one aligned multiple.
+    // Move down through …, 5, 2, 1, 0.5, 0.2, … until two labels fit.
+    const mag = Math.pow(10, Math.floor(Math.log10(step)));
+    const norm = step / mag;
+    step = norm > 2 ? 2 * mag : norm > 1 ? mag : 0.5 * mag;
   }
   return ticks;
 }
 
-function fmtTick(v: number): string {
+export function fmtTick(v: number): string {
   if (v === 0) return "0";
   const a = Math.abs(v);
-  if (a >= 100) return v.toFixed(0);
-  if (a >= 10) return v.toFixed(1);
-  if (a >= 1) return v.toFixed(2);
-  if (a >= 0.01) return v.toFixed(3);
+  if (a >= 0.001 && a < 1e6) return Number.parseFloat(v.toPrecision(12)).toString();
   return v.toExponential(1);
 }
 
