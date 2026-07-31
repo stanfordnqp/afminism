@@ -72,12 +72,21 @@ export default function App() {
   const [psdFigureSize, setPsdFigureSize] = useState<{ w: number; h: number }>({ w: 900, h: 560 });
   const [psdTitle, setPsdTitle] = useState("PSD Summary");
   const [gridZoom, setGridZoom] = useState(1);
+  const [gridMarginLeft, setGridMarginLeft] = useState<number | null>(null);
   const [dropZoneH, setDropZoneH] = useState(0);
   // Globally selected line-profile segment (one across all cards), so Delete
   // only ever removes one.
   const [selectedSeg, setSelectedSeg] = useState<{ cardId: string; segId: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const gridZoomOriginRef = useRef<{
+    element: HTMLElement;
+    xRatio: number;
+    yRatio: number;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -155,22 +164,62 @@ export default function App() {
   useEffect(() => {
     const el = dropZoneRef.current;
     if (!el) return;
-    const obs = new ResizeObserver(() => setDropZoneH(el.clientHeight));
-    obs.observe(el);
-    setDropZoneH(el.clientHeight);
+    const dropZone = el;
+    const obs = new ResizeObserver(() => setDropZoneH(dropZone.clientHeight));
+    obs.observe(dropZone);
+    setDropZoneH(dropZone.clientHeight);
     function onWheel(e: WheelEvent) {
       if (!e.ctrlKey) return;
       e.preventDefault();
+      const grid = gridRef.current;
+      if (grid && gridMarginLeft === null) {
+        const gridRect = grid.getBoundingClientRect();
+        const elRect = dropZone.getBoundingClientRect();
+        const paddingLeft = parseFloat(getComputedStyle(dropZone).paddingLeft) || 0;
+        setGridMarginLeft(gridRect.left - elRect.left + dropZone.scrollLeft - paddingLeft);
+      }
+      const target = (e.target as Element).closest<HTMLElement>(".card-canvas-wrap") ?? gridRef.current;
+      if (target) {
+        const rect = target.getBoundingClientRect();
+        gridZoomOriginRef.current = {
+          element: target,
+          xRatio: (e.clientX - rect.left) / rect.width,
+          yRatio: (e.clientY - rect.top) / rect.height,
+          clientX: e.clientX,
+          clientY: e.clientY,
+        };
+      }
       const factor = Math.pow(1.15, -e.deltaY / 30);
-      setGridZoom((z) => Math.max(0.3, Math.min(6, z * factor)));
+      setGridZoom((z) => {
+        const next = Math.max(0.3, Math.min(6, z * factor));
+        if (next === z) gridZoomOriginRef.current = null;
+        return next;
+      });
     }
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => { obs.disconnect(); el.removeEventListener("wheel", onWheel); };
-  }, [viewMode, expandedId]);
+    dropZone.addEventListener("wheel", onWheel, { passive: false });
+    return () => { obs.disconnect(); dropZone.removeEventListener("wheel", onWheel); };
+  }, [viewMode, expandedId, gridMarginLeft]);
+
+  // Counter-scroll by however far the same normalized image point moved during
+  // layout, keeping the scan point beneath the cursor fixed on screen.
+  useLayoutEffect(() => {
+    const origin = gridZoomOriginRef.current;
+    const el = dropZoneRef.current;
+    if (!origin || !el) return;
+    gridZoomOriginRef.current = null;
+    const rect = origin.element.getBoundingClientRect();
+    const anchoredX = rect.left + origin.xRatio * rect.width;
+    const anchoredY = rect.top + origin.yRatio * rect.height;
+    el.scrollLeft += anchoredX - origin.clientX;
+    el.scrollTop += anchoredY - origin.clientY;
+  }, [gridZoom]);
 
   // Layout controls request a fresh fit, but adding/removing scans must preserve
   // the user's current zoom level.
-  useEffect(() => { setGridZoom(1); }, [opts.columns, opts.showPsd]);
+  useEffect(() => {
+    setGridZoom(1);
+    setGridMarginLeft(null);
+  }, [opts.columns, opts.showPsd]);
 
   // ── processing ────────────────────────────────────────────────────────────
 
@@ -676,9 +725,11 @@ export default function App() {
 
                 {scans.length > 0 && (
                   <SortableContext items={scans.map((s) => s.id)} strategy={rectSortingStrategy}>
-                    <div className="card-grid" style={{
+                    <div ref={gridRef} className="card-grid" style={{
                       "--cols": opts.columns,
                       "--card-canvas-size": `${cardCanvasSize}px`,
+                      marginLeft: gridMarginLeft ?? "auto",
+                      marginRight: gridMarginLeft === null ? "auto" : 0,
                     } as React.CSSProperties}>
                       {scans.map((r) => (
                         <ScanCard
@@ -769,7 +820,7 @@ export default function App() {
           >−</button>
           <button
             className="icon-btn"
-            onClick={() => setGridZoom(1)}
+            onClick={() => { setGridZoom(1); setGridMarginLeft(null); }}
             title="Fit to view"
           >⊡</button>
         </div>
