@@ -51,6 +51,8 @@ const DEFAULT_OPTS: ProcessingOptions = {
 
 let idCounter = 0;
 const uid = () => `scan-${++idCounter}`;
+const MIN_GRID_CANVAS_SIZE = 54;
+const MAX_GRID_CANVAS_SIZE = 4320;
 
 export default function App() {
   const [scans, setScans] = useState<ScanRecord[]>([]);
@@ -71,8 +73,9 @@ export default function App() {
   const [viewMode, setViewMode] = useState<"grid" | "psd">("grid");
   const [psdFigureSize, setPsdFigureSize] = useState<{ w: number; h: number }>({ w: 900, h: 560 });
   const [psdTitle, setPsdTitle] = useState("PSD Summary");
-  const [gridZoom, setGridZoom] = useState(1);
+  const [gridCanvasSize, setGridCanvasSize] = useState<number | null>(null);
   const [gridMarginLeft, setGridMarginLeft] = useState<number | null>(null);
+  const [gridExtent, setGridExtent] = useState({ width: 0, height: 0 });
   const [dropZoneH, setDropZoneH] = useState(0);
   // Globally selected line-profile segment (one across all cards), so Delete
   // only ever removes one.
@@ -80,6 +83,7 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const gridScrollRestoreRef = useRef<{ left: number; top: number } | null>(null);
   const gridZoomOriginRef = useRef<{
     element: HTMLElement;
     xRatio: number;
@@ -89,6 +93,37 @@ export default function App() {
   } | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  // Fit the first loaded grid vertically. Once captured, card size is absolute:
+  // adding, removing, or reordering scans cannot change it indirectly.
+  const gridRows = scans.length > 0 ? Math.ceil(scans.length / opts.columns) : 1;
+  const chromeOverhead = 90 + 16;
+  const psdFactor = opts.showPsd ? 0.6 : 0;
+  const maxAspect = scans.length > 0
+    ? Math.max(...scans.map((s) => s.scanUm[1] / s.scanUm[0]))
+    : 1;
+  const availPerRow = (dropZoneH - 32) / gridRows - chromeOverhead;
+  const baseCanvasSize = Math.max(180, Math.floor(availPerRow / (maxAspect + psdFactor)));
+  const cardCanvasSize = gridCanvasSize ?? baseCanvasSize;
+
+  useLayoutEffect(() => {
+    if (scans.length > 0 && gridCanvasSize === null) setGridCanvasSize(baseCanvasSize);
+  }, [scans.length, gridCanvasSize, baseCanvasSize]);
+
+  useLayoutEffect(() => {
+    const saved = gridScrollRestoreRef.current;
+    const dropZone = dropZoneRef.current;
+    if (!saved || !dropZone) return;
+    gridScrollRestoreRef.current = null;
+    dropZone.scrollLeft = saved.left;
+    dropZone.scrollTop = saved.top;
+  }, [scans]);
+
+  function preserveGridScroll() {
+    const dropZone = dropZoneRef.current;
+    if (!dropZone) return;
+    gridScrollRestoreRef.current = { left: dropZone.scrollLeft, top: dropZone.scrollTop };
+  }
 
   // Delete the selected segment with Delete/Backspace (unless typing in a field).
   useEffect(() => {
@@ -190,15 +225,16 @@ export default function App() {
         };
       }
       const factor = Math.pow(1.15, -e.deltaY / 30);
-      setGridZoom((z) => {
-        const next = Math.max(0.3, Math.min(6, z * factor));
-        if (next === z) gridZoomOriginRef.current = null;
+      setGridCanvasSize((size) => {
+        const current = size ?? baseCanvasSize;
+        const next = Math.max(MIN_GRID_CANVAS_SIZE, Math.min(MAX_GRID_CANVAS_SIZE, current * factor));
+        if (next === current) gridZoomOriginRef.current = null;
         return next;
       });
     }
     dropZone.addEventListener("wheel", onWheel, { passive: false });
     return () => { obs.disconnect(); dropZone.removeEventListener("wheel", onWheel); };
-  }, [viewMode, expandedId, gridMarginLeft]);
+  }, [viewMode, expandedId, gridMarginLeft, baseCanvasSize]);
 
   // Counter-scroll by however far the same normalized image point moved during
   // layout, keeping the scan point beneath the cursor fixed on screen.
@@ -212,14 +248,26 @@ export default function App() {
     const anchoredY = rect.top + origin.yRatio * rect.height;
     el.scrollLeft += anchoredX - origin.clientX;
     el.scrollTop += anchoredY - origin.clientY;
-  }, [gridZoom]);
+  }, [gridCanvasSize]);
 
-  // Layout controls request a fresh fit, but adding/removing scans must preserve
-  // the user's current zoom level.
-  useEffect(() => {
-    setGridZoom(1);
-    setGridMarginLeft(null);
-  }, [opts.columns, opts.showPsd]);
+  // Keep the largest scrollable workspace reached during this grid session.
+  // Deleting a row then leaves empty space instead of forcing scrollTop to clamp.
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const retainedGrid = grid;
+    function retainExtent() {
+      setGridExtent((extent) => {
+        const width = Math.max(extent.width, retainedGrid.offsetWidth);
+        const height = Math.max(extent.height, retainedGrid.offsetHeight);
+        return width === extent.width && height === extent.height ? extent : { width, height };
+      });
+    }
+    const obs = new ResizeObserver(retainExtent);
+    obs.observe(retainedGrid);
+    retainExtent();
+    return () => obs.disconnect();
+  }, [viewMode, expandedId, scans.length]);
 
   // ── processing ────────────────────────────────────────────────────────────
 
@@ -278,6 +326,7 @@ export default function App() {
     }
     setLoadingFiles(null);
     if (newScans.length) {
+      preserveGridScroll();
       setScans((s) => [...s, ...newScans]);
       // Mark new scans for sparkle glow, clear after 3s
       const ids = newScans.map((s) => s.id);
@@ -304,6 +353,7 @@ export default function App() {
   // ── card callbacks ────────────────────────────────────────────────────────
 
   function removeCard(id: string) {
+    preserveGridScroll();
     setScans((s) => s.filter((r) => r.id !== id));
     if (expandedId === id) setExpandedId(null);
   }
@@ -311,6 +361,14 @@ export default function App() {
     setScans([]);
     setExpandedId(null);
     setViewMode("grid");
+    setGridCanvasSize(null);
+    setGridMarginLeft(null);
+    setGridExtent({ width: 0, height: 0 });
+    gridScrollRestoreRef.current = null;
+    if (dropZoneRef.current) {
+      dropZoneRef.current.scrollLeft = 0;
+      dropZoneRef.current.scrollTop = 0;
+    }
   }
   function labelCard(id: string, label: string) { setScans((s) => s.map((r) => r.id === id ? { ...r, label } : r)); }
   function rotateCard(id: string) {
@@ -356,6 +414,7 @@ export default function App() {
     setDragging(null);
     const { active, over } = e;
     if (over && active.id !== over.id) {
+      preserveGridScroll();
       setScans((s) => {
         const from = s.findIndex((r) => r.id === active.id);
         const to = s.findIndex((r) => r.id === over.id);
@@ -578,22 +637,6 @@ export default function App() {
   const draggingRecord = scans.find((s) => s.id === dragging);
   const expandedRecord = expandedId ? scans.find((s) => s.id === expandedId) ?? null : null;
 
-  // Compute card canvas WIDTH so the grid fits vertically at zoom=1.
-  // Total card height = scanH + (PSD panel = 0.6·width if on) + chrome.
-  // scanH = width · maxAspect across scans so the tallest tile still fits.
-  const gridRows = scans.length > 0 ? Math.ceil(scans.length / opts.columns) : 1;
-  const chromeOverhead = 90 + 16; // header + stats + filename + inter-card gap
-  const psdFactor = opts.showPsd ? 0.6 : 0; // matches CSS .psd-panel height
-  // Trace panels are intentionally NOT reserved here: they appear on draw and
-  // the grid scrolls, so the canvas never resizes mid-draw.
-  const maxAspect = scans.length > 0
-    ? Math.max(...scans.map((s) => s.scanUm[1] / s.scanUm[0]))
-    : 1;
-  const availPerRow = (dropZoneH - 32) / gridRows - chromeOverhead;
-  // availPerRow = baseW · maxAspect + baseW · psdFactor → baseW = availPerRow / (maxAspect + psdFactor)
-  const baseCanvasSize = Math.max(180, Math.floor(availPerRow / (maxAspect + psdFactor)));
-  const cardCanvasSize = Math.round(baseCanvasSize * gridZoom);
-
   return (
     <DndContext sensors={sensors} onDragStart={onDndStart} onDragEnd={onDndEnd}>
       <style>{`:root { --sidebar-w: ${sidebarOpen ? 260 : 0}px; }`}</style>
@@ -730,6 +773,8 @@ export default function App() {
                       "--card-canvas-size": `${cardCanvasSize}px`,
                       marginLeft: gridMarginLeft ?? "auto",
                       marginRight: gridMarginLeft === null ? "auto" : 0,
+                      minWidth: gridExtent.width || undefined,
+                      minHeight: gridExtent.height || undefined,
                     } as React.CSSProperties}>
                       {scans.map((r) => (
                         <ScanCard
@@ -810,17 +855,25 @@ export default function App() {
         <div className="grid-zoom-controls">
           <button
             className="icon-btn"
-            onClick={() => setGridZoom((z) => Math.min(6, z * 1.2))}
+            onClick={() => setGridCanvasSize((size) => Math.min(MAX_GRID_CANVAS_SIZE, (size ?? baseCanvasSize) * 1.2))}
             title="Zoom in"
           >+</button>
           <button
             className="icon-btn"
-            onClick={() => setGridZoom((z) => Math.max(0.3, z / 1.2))}
+            onClick={() => setGridCanvasSize((size) => Math.max(MIN_GRID_CANVAS_SIZE, (size ?? baseCanvasSize) / 1.2))}
             title="Zoom out"
           >−</button>
           <button
             className="icon-btn"
-            onClick={() => { setGridZoom(1); setGridMarginLeft(null); }}
+            onClick={() => {
+              setGridCanvasSize(baseCanvasSize);
+              setGridMarginLeft(null);
+              setGridExtent({ width: 0, height: 0 });
+              if (dropZoneRef.current) {
+                dropZoneRef.current.scrollLeft = 0;
+                dropZoneRef.current.scrollTop = 0;
+              }
+            }}
             title="Fit to view"
           >⊡</button>
         </div>
