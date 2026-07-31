@@ -75,6 +75,7 @@ export default function App() {
   const [psdTitle, setPsdTitle] = useState("PSD Summary");
   const [gridCanvasSize, setGridCanvasSize] = useState<number | null>(null);
   const [gridMarginLeft, setGridMarginLeft] = useState<number | null>(null);
+  const [gridMarginTop, setGridMarginTop] = useState(0);
   const [gridExtent, setGridExtent] = useState({ width: 0, height: 0 });
   const [dropZoneH, setDropZoneH] = useState(0);
   // Globally selected line-profile segment (one across all cards), so Delete
@@ -237,7 +238,8 @@ export default function App() {
   }, [viewMode, expandedId, gridMarginLeft, baseCanvasSize]);
 
   // Counter-scroll by however far the same normalized image point moved during
-  // layout, keeping the scan point beneath the cursor fixed on screen.
+  // layout. At the top/left scroll limits, move the grid instead so the browser
+  // cannot clamp away the adjustment needed to keep that point under the cursor.
   useLayoutEffect(() => {
     const origin = gridZoomOriginRef.current;
     const el = dropZoneRef.current;
@@ -246,8 +248,20 @@ export default function App() {
     const rect = origin.element.getBoundingClientRect();
     const anchoredX = rect.left + origin.xRatio * rect.width;
     const anchoredY = rect.top + origin.yRatio * rect.height;
-    el.scrollLeft += anchoredX - origin.clientX;
-    el.scrollTop += anchoredY - origin.clientY;
+    const nextScrollLeft = el.scrollLeft + anchoredX - origin.clientX;
+    const nextScrollTop = el.scrollTop + anchoredY - origin.clientY;
+    if (nextScrollLeft < 0) {
+      setGridMarginLeft((margin) => (margin ?? 0) - nextScrollLeft);
+      el.scrollLeft = 0;
+    } else {
+      el.scrollLeft = nextScrollLeft;
+    }
+    if (nextScrollTop < 0) {
+      setGridMarginTop((margin) => margin - nextScrollTop);
+      el.scrollTop = 0;
+    } else {
+      el.scrollTop = nextScrollTop;
+    }
   }, [gridCanvasSize]);
 
   // Keep the largest scrollable workspace reached during this grid session.
@@ -363,6 +377,7 @@ export default function App() {
     setViewMode("grid");
     setGridCanvasSize(null);
     setGridMarginLeft(null);
+    setGridMarginTop(0);
     setGridExtent({ width: 0, height: 0 });
     gridScrollRestoreRef.current = null;
     if (dropZoneRef.current) {
@@ -773,6 +788,7 @@ export default function App() {
                       "--card-canvas-size": `${cardCanvasSize}px`,
                       marginLeft: gridMarginLeft ?? "auto",
                       marginRight: gridMarginLeft === null ? "auto" : 0,
+                      marginTop: gridMarginTop,
                       minWidth: gridExtent.width || undefined,
                       minHeight: gridExtent.height || undefined,
                     } as React.CSSProperties}>
@@ -868,6 +884,7 @@ export default function App() {
             onClick={() => {
               setGridCanvasSize(baseCanvasSize);
               setGridMarginLeft(null);
+              setGridMarginTop(0);
               setGridExtent({ width: 0, height: 0 });
               if (dropZoneRef.current) {
                 dropZoneRef.current.scrollLeft = 0;
