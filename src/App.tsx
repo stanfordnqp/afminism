@@ -22,7 +22,7 @@ import { toImageData, renderScanForExport, drawScaleBar, drawColorbar } from "./
 import Colorbar from "./Colorbar";
 import PsdPlot, { drawPsd } from "./PsdPlot";
 import PsdSummaryView, { buildPsdSummaryCanvas } from "./PsdSummaryView";
-import LineTracePlot, { drawLineTrace } from "./LineTracePlot";
+import LineTracePlot, { drawLineTrace, lineTraceRange } from "./LineTracePlot";
 import type { ScanRecord, ProcessingOptions } from "./types";
 import type { LineSegment } from "./lineprofile";
 import { buildTraces, drawSegments } from "./lineprofile";
@@ -585,7 +585,7 @@ export default function App() {
         ctx.save();
         ctx.translate(x, traceY);
         ctx.scale(k, k);
-        drawLineTrace(ctx, cellW / k, traceH / k, buildTraces(r), true, undefined, "Line profiles");
+        drawLineTrace(ctx, cellW / k, traceH / k, buildTraces(r), true, undefined, "Line profiles", sharedTraceYRange);
         ctx.restore();
       }
 
@@ -682,6 +682,10 @@ export default function App() {
       return [sharedAuto[0] + opts.climLow * span, sharedAuto[0] + opts.climHigh * span];
     },
     [sharedAuto, opts.climLow, opts.climHigh]
+  );
+  const sharedTraceYRange = useMemo(
+    () => opts.shareScale ? lineTraceRange(scans.flatMap(buildTraces)) : null,
+    [opts.shareScale, scans]
   );
 
   return (
@@ -840,6 +844,7 @@ export default function App() {
                           isNew={newIds.has(r.id)}
                           showPsd={opts.showPsd}
                           sharedClim={sharedClim}
+                          sharedTraceYRange={sharedTraceYRange}
                         />
                       ))}
                     </div>
@@ -860,7 +865,7 @@ export default function App() {
                 record={draggingRecord} opts={opts}
                 onRemove={() => {}} onLabelChange={() => {}} onRotate={() => {}} onFlip={() => {}} onExpand={() => {}}
                 onSegmentsChange={() => {}} selectedSegId={null} onSelectSeg={() => {}}
-                isOverlay sharedClim={sharedClim}
+                isOverlay sharedClim={sharedClim} sharedTraceYRange={sharedTraceYRange}
               />
             </div>
           )}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fmtTick, linTicks } from "./LineTracePlot";
+import { fmtTick, lineTraceRange, linTicks } from "./LineTracePlot";
 
 describe("line-profile ticks", () => {
   it("uses a smaller nice step when alignment leaves fewer than two ticks", () => {
@@ -14,5 +14,15 @@ describe("line-profile ticks", () => {
 
   it("formats nice ticks without unnecessary trailing zeros", () => {
     expect([0.1, 0.2, 0.5, 1, 2, 4].map(fmtTick)).toEqual(["0.1", "0.2", "0.5", "1", "2", "4"]);
+  });
+
+  it("builds one padded range from every unclipped trace value", () => {
+    const traces = [
+      { id: "a", label: "1", color: "blue", dist: new Float32Array([0, 1]), height: new Float32Array([-1, 1]) },
+      { id: "b", label: "1", color: "red", dist: new Float32Array([0, 1]), height: new Float32Array([2, 100]) },
+    ];
+    const range = lineTraceRange(traces);
+    expect(range?.[0]).toBeCloseTo(-9.08);
+    expect(range?.[1]).toBeCloseTo(108.08);
   });
 });

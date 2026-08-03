@@ -27,11 +27,13 @@ interface Props {
   showPsd?: boolean;
   /** Shared color range across the grid; when set, overrides this card's own range. */
   sharedClim?: [number, number] | null;
+  /** Shared unclipped y-axis range for grid line profiles. */
+  sharedTraceYRange?: [number, number] | null;
 }
 
 export default function ScanCard({
   record, opts, onRemove, onLabelChange, onRotate, onFlip, onExpand,
-  onSegmentsChange, selectedSegId, onSelectSeg, isNew, isOverlay, showPsd, sharedClim,
+  onSegmentsChange, selectedSegId, onSelectSeg, isNew, isOverlay, showPsd, sharedClim, sharedTraceYRange,
 }: Props) {
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -178,7 +180,7 @@ export default function ScanCard({
         )}
         {showTracePlot && (
           <div className="trace-panel">
-            <LineTracePlot traces={traces} showAxes />
+            <LineTracePlot traces={traces} showAxes yRange={sharedTraceYRange} />
           </div>
         )}
         <div className="card-stats">{statsLine}</div>
@@ -225,4 +227,3 @@ function TrashIcon() {
     </svg>
   );
 }
-

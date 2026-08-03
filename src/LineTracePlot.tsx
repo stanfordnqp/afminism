@@ -5,6 +5,7 @@ interface Props {
   traces: LineTrace[];
   showAxes?: boolean;
   title?: string;
+  yRange?: [number, number] | null;
 }
 
 const MT = 10, MB = 46, ML = 56, MR = 10;
@@ -47,6 +48,20 @@ export function fmtTick(v: number): string {
   return v.toExponential(1);
 }
 
+export function lineTraceRange(traces: LineTrace[]): [number, number] | null {
+  let yMin = Infinity, yMax = -Infinity;
+  for (const trace of traces) {
+    for (let i = 0; i < trace.height.length; i++) {
+      if (trace.height[i] < yMin) yMin = trace.height[i];
+      if (trace.height[i] > yMax) yMax = trace.height[i];
+    }
+  }
+  if (!isFinite(yMin)) return null;
+  if (yMax - yMin < 1e-9) { yMax += 0.5; yMin -= 0.5; }
+  const pad = (yMax - yMin) * 0.08;
+  return [yMin - pad, yMax + pad];
+}
+
 function fmtVal(v: number): string {
   const a = Math.abs(v);
   if (a >= 100) return v.toFixed(1);
@@ -63,25 +78,25 @@ export function drawLineTrace(
   traces: LineTrace[],
   showAxes: boolean,
   cursorCssX?: number,
-  title?: string
+  title?: string,
+  yRange?: [number, number] | null
 ) {
-  let xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+  let xMax = -Infinity;
   for (const t of traces) {
     for (let i = 0; i < t.dist.length; i++) {
       if (t.dist[i] > xMax) xMax = t.dist[i];
-      if (t.height[i] < yMin) yMin = t.height[i];
-      if (t.height[i] > yMax) yMax = t.height[i];
     }
   }
 
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, cssW, cssH);
-  if (!isFinite(xMax) || xMax <= 0 || !isFinite(yMin)) return;
+  const automaticYRange = lineTraceRange(traces);
+  if (!isFinite(xMax) || xMax <= 0 || !automaticYRange) return;
 
-  // Pad the y-range a touch; guard against a flat trace.
-  if (yMax - yMin < 1e-9) { yMax += 0.5; yMin -= 0.5; }
-  const yPad = (yMax - yMin) * 0.08;
-  yMin -= yPad; yMax += yPad;
+  let [yMin, yMax] = automaticYRange;
+  if (yRange && yRange[1] > yRange[0]) {
+    [yMin, yMax] = yRange;
+  }
   const xMin = 0;
 
   const titleH = title ? 22 : 0;
@@ -236,7 +251,7 @@ export function drawLineTrace(
   }
 }
 
-export default function LineTracePlot({ traces, showAxes = true, title }: Props) {
+export default function LineTracePlot({ traces, showAxes = true, title, yRange }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cursorX, setCursorX] = useState<number | undefined>(undefined);
 
@@ -250,8 +265,8 @@ export default function LineTracePlot({ traces, showAxes = true, title }: Props)
     c.height = Math.round(cssH * dpr);
     const ctx = c.getContext("2d")!;
     ctx.scale(dpr, dpr);
-    drawLineTrace(ctx, cssW, cssH, traces, showAxes, cx, title);
-  }, [traces, showAxes, title]);
+    drawLineTrace(ctx, cssW, cssH, traces, showAxes, cx, title, yRange);
+  }, [traces, showAxes, title, yRange]);
 
   useEffect(() => { draw(cursorX); });
 
