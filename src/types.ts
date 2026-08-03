@@ -22,6 +22,9 @@ export interface ProcessingOptions {
   columns: number;
   colormap: ColormapName;
   showPsd: boolean;
+  // When true, all scans in the grid share one pooled color range so heights
+  // are directly comparable across cards.
+  shareScale: boolean;
 }
 
 export interface ScanRecord {

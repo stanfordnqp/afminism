@@ -231,6 +231,26 @@ export default function Sidebar({ open, onToggle, opts, onChange, isExpanded, vi
             <div className="sidebar-divider" />
             <div className="sidebar-section">
               <div className="sidebar-section-label">Color scale</div>
+              {!isExpanded && (
+                <div className="scale-mode-control">
+                  <span className="scale-mode-label">Range</span>
+                  <div className="scale-mode-options" role="group" aria-label="Height scale range">
+                    <button
+                      type="button"
+                      className={`scale-mode-option${!opts.shareScale ? " active" : ""}`}
+                      aria-pressed={!opts.shareScale}
+                      onClick={() => onChange({ shareScale: false })}
+                    >Per image</button>
+                    <button
+                      type="button"
+                      className={`scale-mode-option${opts.shareScale ? " active" : ""}`}
+                      aria-pressed={opts.shareScale}
+                      onClick={() => onChange({ shareScale: true })}
+                    >Shared</button>
+                  </div>
+                  <InfoTip text="Shared uses one height range for every grid scan. When outlier clipping is on, mean and σ are calculated from all pixels together before the global min–max is chosen." />
+                </div>
+              )}
               <ClimControl
                 colormap={opts.colormap}
                 low={opts.climLow}

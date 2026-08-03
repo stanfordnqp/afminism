@@ -264,6 +264,49 @@ export function displayRange(
   return [a + low * span, a + high * span];
 }
 
+// Shared color scale across many scans. Clipping uses one pooled mean and
+// population σ across every pixel, then takes the min/max of all surviving
+// pixels. The manual window is applied once to that global range.
+export function sharedDisplayRange(
+  scans: { z: Float32Array }[],
+  opts: { doClip: boolean; climSigma: number; climLow?: number; climHigh?: number }
+): [number, number] | null {
+  let count = 0, mean = 0, m2 = 0;
+  let globalMin = Infinity, globalMax = -Infinity;
+  for (const s of scans) {
+    for (let i = 0; i < s.z.length; i++) {
+      const value = s.z[i];
+      count++;
+      const delta = value - mean;
+      mean += delta / count;
+      m2 += delta * (value - mean);
+      if (value < globalMin) globalMin = value;
+      if (value > globalMax) globalMax = value;
+    }
+  }
+  if (count === 0) return null;
+
+  let a = globalMin, b = globalMax;
+  if (opts.doClip) {
+    const threshold = opts.climSigma * Math.sqrt(m2 / count);
+    a = Infinity; b = -Infinity;
+    for (const s of scans) {
+      for (let i = 0; i < s.z.length; i++) {
+        const value = s.z[i];
+        if (Math.abs(value - mean) > threshold) continue;
+        if (value < a) a = value;
+        if (value > b) b = value;
+      }
+    }
+    if (a > b) { a = globalMin; b = globalMax; }
+  }
+
+  const span = b - a || 1;
+  const low = opts.climLow ?? 0;
+  const high = opts.climHigh ?? 1;
+  return [a + low * span, a + high * span];
+}
+
 // Rotate k×90° clockwise. Returns rotated array; dimensions swap on odd k
 // (use currentDims to get the resulting width/height).
 function rot90cw(z: Float32Array, width: number, height: number, k: number): Float32Array {

@@ -131,6 +131,7 @@ export async function deserializeSession(
   const opts: ProcessingOptions = {
     ...rawOpts,
     showPsd: rawOpts.showPsd ?? false,
+    shareScale: rawOpts.shareScale ?? false,
     lineMethod: rawOpts.lineMethod ?? "median",
     lineOrder: rawOpts.lineOrder ?? 1,
     lineSigma: rawOpts.lineSigma ?? 5,

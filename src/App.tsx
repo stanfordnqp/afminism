@@ -16,7 +16,7 @@ import Sparkles from "./Sparkles";
 import RainbowTrail from "./RainbowTrail";
 import FeedbackButton from "./FeedbackButton";
 import { parseParkTiff } from "./tiff";
-import { reprocess, computeRms, currentDims, colorRange, displayRange } from "./processing";
+import { reprocess, computeRms, currentDims, colorRange, displayRange, sharedDisplayRange } from "./processing";
 import { computePSD } from "./psd";
 import { toImageData, renderScanForExport, drawScaleBar, drawColorbar } from "./colormap";
 import Colorbar from "./Colorbar";
@@ -47,6 +47,7 @@ const DEFAULT_OPTS: ProcessingOptions = {
   columns: 2,
   colormap: "gwynet" as const,
   showPsd: false,
+  shareScale: false,
 };
 
 let idCounter = 0;
@@ -543,7 +544,7 @@ export default function App() {
       const scanH = Math.round(scanW * (r.scanUm[1] / r.scanUm[0]));
       // Top-align scan within its row (rows can have heterogeneous heights)
 
-      const [vmin, vmax] = displayRange(r.z, opts, r.rmsClipped);
+      const [vmin, vmax] = sharedClim ?? displayRange(r.z, opts, r.rmsClipped);
 
       const [curW, curH] = currentDims(r.width, r.height, r.rotation);
       const scanCanvas = renderScanForExport(r.z, curW, curH, r.scanUm, vmin, vmax, scanW, opts.colormap);
@@ -666,6 +667,22 @@ export default function App() {
 
   const draggingRecord = scans.find((s) => s.id === dragging);
   const expandedRecord = expandedId ? scans.find((s) => s.id === expandedId) ?? null : null;
+
+  // Shared color range across all grid cards (null = per-image). The pixel scan
+  // only re-runs when scans/doClip/climSigma change; the cheap window rescale
+  // re-runs when the manual climLow/climHigh sliders move.
+  const sharedAuto = useMemo(
+    () => opts.shareScale ? sharedDisplayRange(scans, { doClip: opts.doClip, climSigma: opts.climSigma }) : null,
+    [opts.shareScale, scans, opts.doClip, opts.climSigma]
+  );
+  const sharedClim = useMemo<[number, number] | null>(
+    () => {
+      if (!sharedAuto) return null;
+      const span = (sharedAuto[1] - sharedAuto[0]) || 1;
+      return [sharedAuto[0] + opts.climLow * span, sharedAuto[0] + opts.climHigh * span];
+    },
+    [sharedAuto, opts.climLow, opts.climHigh]
+  );
 
   return (
     <DndContext sensors={sensors} onDragStart={onDndStart} onDragEnd={onDndEnd}>
@@ -822,6 +839,7 @@ export default function App() {
                           onSelectSeg={(segId) => setSelectedSeg(segId ? { cardId: r.id, segId } : null)}
                           isNew={newIds.has(r.id)}
                           showPsd={opts.showPsd}
+                          sharedClim={sharedClim}
                         />
                       ))}
                     </div>
@@ -842,7 +860,7 @@ export default function App() {
                 record={draggingRecord} opts={opts}
                 onRemove={() => {}} onLabelChange={() => {}} onRotate={() => {}} onFlip={() => {}} onExpand={() => {}}
                 onSegmentsChange={() => {}} selectedSegId={null} onSelectSeg={() => {}}
-                isOverlay
+                isOverlay sharedClim={sharedClim}
               />
             </div>
           )}
@@ -1579,4 +1597,3 @@ function TrashIcon() {
     </svg>
   );
 }
-

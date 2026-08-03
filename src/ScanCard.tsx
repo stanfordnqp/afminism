@@ -25,11 +25,13 @@ interface Props {
   /** When true the card is rendered inside the dnd overlay — no sortable hooks needed */
   isOverlay?: boolean;
   showPsd?: boolean;
+  /** Shared color range across the grid; when set, overrides this card's own range. */
+  sharedClim?: [number, number] | null;
 }
 
 export default function ScanCard({
   record, opts, onRemove, onLabelChange, onRotate, onFlip, onExpand,
-  onSegmentsChange, selectedSegId, onSelectSeg, isNew, isOverlay, showPsd,
+  onSegmentsChange, selectedSegId, onSelectSeg, isNew, isOverlay, showPsd, sharedClim,
 }: Props) {
   const dataCanvasRef = useRef<HTMLCanvasElement>(null);
   const scaleBarCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -51,7 +53,7 @@ export default function ScanCard({
   const setRef = isOverlay ? undefined : sortable.setNodeRef;
 
   // ── compute color range ────────────────────────────────────────────────────
-  const [vmin, vmax] = displayRange(record.z, opts, record.rmsClipped);
+  const [vmin, vmax] = sharedClim ?? displayRange(record.z, opts, record.rmsClipped);
 
   // Current (post-rotation) pixel grid dimensions of record.z
   const [curW, curH] = currentDims(record.width, record.height, record.rotation);
